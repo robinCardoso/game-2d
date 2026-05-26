@@ -1,0 +1,99 @@
+{
+  "name": "Sorcere",
+  "spriteSheetUrl": "tiles/characters/sorcere.png",
+  "frameWidth": 288,
+  "frameHeight": 288,
+  "defaultDirection": "down",
+  "animations": {
+    "idle_up": {
+      "row": 2,
+      "frames": 4,
+      "speedFps": 5,
+      "loop": true,
+      "startFrame": 0
+    },
+    "idle_down": {
+      "row": 3,
+      "frames": 4,
+      "speedFps": 1,
+      "loop": true,
+      "startFrame": 0
+    },
+    "idle_left": {
+      "row": 1,
+      "frames": 1,
+      "speedFps": 1,
+      "loop": true,
+      "startFrame": 2
+    },
+    "idle_right": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 1,
+      "loop": true,
+      "startFrame": 2
+    },
+    "walk_up": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 5,
+      "loop": true,
+      "startFrame": 0
+    },
+    "walk_down": {
+      "row": 0,
+      "frames": 4,
+      "speedFps": 5,
+      "loop": true,
+      "startFrame": 0
+    },
+    "walk_left": {
+      "row": 1,
+      "frames": 4,
+      "speedFps": 5,
+      "loop": true,
+      "startFrame": 0
+    },
+    "walk_right": {
+      "row": 0,
+      "frames": 4,
+      "speedFps": 5,
+      "loop": true,
+      "startFrame": 0
+    },
+    "attack_up": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 5,
+      "loop": false
+    },
+    "attack_down": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 5,
+      "loop": false
+    },
+    "attack_left": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 5,
+      "loop": false
+    },
+    "attack_right": {
+      "row": 0,
+      "frames": 1,
+      "speedFps": 5,
+      "loop": false
+    }
+  },
+  "offsetX": 20,
+  "offsetY": 10,
+  "gapX": 10,
+  "gapY": 5,
+  "anchorX": 0,
+  "anchorY": 0,
+  "chromaKey": true,
+  "chromaKeyTolerance": 75,
+  "sheetLayout": "vertical",
+  "category": "player/sorcerer"
+}

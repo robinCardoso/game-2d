@@ -116,3 +116,7 @@ export function getTileProperties(fileName: string): TileProperties {
         speedModifier: 1.0
     };
 }
+
+export function mergeCustomTileProperties(customProps: Record<string, TileProperties>): void {
+    Object.assign(TILE_CONFIG, customProps);
+}

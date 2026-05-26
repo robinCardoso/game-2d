@@ -1,6 +1,12 @@
 import './style.css';
 import { HistoryManager } from './functions/history';
 import { AccountType, getRolePermissions } from './functions/roles';
+import { toast, popup } from './utils/popup';
+import { SpriteAnimationController } from './character/spriteAnimation';
+import { createDefaultCharacterConfig } from './character/characterSerializer';
+import { GameEntity } from './character/entity';
+import { initCharacterEditor } from './editor/characterEditor';
+import { initMapSpriteEditor } from './editor/mapSpriteEditor';
 import {
     ENGINE_CONFIG,
     buildTileRegistry,
@@ -47,7 +53,7 @@ import {
 // --- ENGINE ---
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
 const MAP_SIZE = ENGINE_CONFIG.MAP_SIZE;
-const TILE_TYPES = buildTileRegistry();
+export let TILE_TYPES = buildTileRegistry();
 
 let worldMap: WorldMap = ensureAllFloors(createDefaultStarterMap());
 let mapSpawn = { x: 50, y: 50, z: 0 };
@@ -215,6 +221,40 @@ const characterSpeed: CharacterSpeedState = createDefaultCharacterSpeed();
 const playerEquipment: EquipmentState = createDefaultEquipment();
 const speedBuffs = new SpeedBuffManager();
 
+// Tenta carregar o preset do localStorage se existir
+function getSavedOrInitialCharacterConfig() {
+    try {
+        const saved = localStorage.getItem('game2d_active_character_config');
+        if (saved) {
+            const parsed = JSON.parse(saved);
+            // Valida se o formato está minimamente correto
+            if (parsed.name && typeof parsed.frameWidth === 'number' && typeof parsed.frameHeight === 'number' && parsed.animations) {
+                console.log('[Character Storage] Carregando personagem salvo anteriormente do localStorage:', parsed.name);
+                return parsed;
+            }
+        }
+    } catch (e) {
+        console.error('[Character Storage] Erro ao carregar do localStorage:', e);
+    }
+    return createDefaultCharacterConfig();
+}
+
+export const activeCharacterController = new SpriteAnimationController(getSavedOrInitialCharacterConfig());
+
+// Instanciação de NPCs de teste para validar o sistema de Outfits/Multi-entidades
+export const npcs: GameEntity[] = [
+    new GameEntity('npc_1', 'Trainer Knight', createDefaultCharacterConfig(), 52, 50, 0),
+    new GameEntity('npc_2', 'Guard Knight', createDefaultCharacterConfig(), 48, 52, 0),
+    new GameEntity('npc_3', 'Wizard Apprentice', createDefaultCharacterConfig(), 50, 48, 0)
+];
+
+function triggerPlayerAttack() {
+    activeCharacterController.setState('attack');
+    activeCharacterController.onAnimationEndCallback = () => {
+        activeCharacterController.setState('idle');
+    };
+}
+
 function syncEquipmentToStats(): void {
     characterSpeed.equipmentBonus =
         calculateEquipmentSpeedBonus(playerEquipment);
@@ -366,6 +406,26 @@ syncEquipmentToStats();
 refreshPlayerMovementSpeed();
 setupMovementDevControls();
 updateRoleUI();
+initCharacterEditor();
+initMapSpriteEditor();
+
+async function loadCustomTileProperties() {
+    try {
+        const response = await fetch('/api/list-tile-properties');
+        if (response.ok) {
+            const result = await response.json();
+            if (result.properties) {
+                const { mergeCustomTileProperties } = await import('./functions/tileConfig');
+                mergeCustomTileProperties(result.properties);
+                TILE_TYPES = buildTileRegistry();
+                initEditorUI();
+            }
+        }
+    } catch (err) {
+        console.error('[Engine] Erro ao carregar propriedades customizadas dos tiles:', err);
+    }
+}
+loadCustomTileProperties();
 
 // --- LÓGICA DE INICIALIZAÇÃO ---
 
@@ -471,6 +531,12 @@ canvas.addEventListener('mousedown', e => {
     if (!getRolePermissions(currentRole).canEditMap) {
         return;
     }
+    // Permite pintar o mapa APENAS quando o painel unificado de edição de mapa (map_editor) está ativo
+    const activePanel = editorShell?.getActivePanel();
+    const isMapEditPanelActive = activePanel === 'map_editor';
+    if (!isMapEditPanelActive) {
+        return;
+    }
     const rect = canvas.getBoundingClientRect();
     const tx = Math.floor((e.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
     const ty = Math.floor((e.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
@@ -542,8 +608,50 @@ function applyShape(type: string, x1: number, y1: number, x2: number, y2: number
 }
 
 window.addEventListener('keydown', e => {
+    // Evita conflitos de teclas de atalho (como WASD, P, B, E, Espaço) enquanto o usuário digita nos inputs
+    const activeEl = document.activeElement;
+    const isTyping = activeEl && (
+        activeEl.tagName === 'INPUT' || 
+        activeEl.tagName === 'SELECT' || 
+        activeEl.tagName === 'TEXTAREA' || 
+        activeEl.getAttribute('contenteditable') === 'true'
+    );
+    if (isTyping) {
+        return;
+    }
+
     const key = e.key.toLowerCase();
     keys[key] = true;
+    
+    if (key === ' ' || key === 'spacebar') {
+        e.preventDefault();
+        triggerPlayerAttack();
+    }
+    
+    // Novos atalhos para os novos estados de animação
+    if (key === 'x') {
+        e.preventDefault();
+        if (activeCharacterController.currentState === 'sit') {
+            activeCharacterController.setState('idle');
+        } else {
+            activeCharacterController.setState('sit');
+        }
+    }
+    if (key === 'h') {
+        e.preventDefault();
+        if (activeCharacterController.currentState === 'dead') {
+            activeCharacterController.setState('idle');
+        } else {
+            activeCharacterController.setState('dead');
+        }
+    }
+    if (key === 'c') {
+        e.preventDefault();
+        activeCharacterController.setState('cast');
+        activeCharacterController.onAnimationEndCallback = () => {
+            activeCharacterController.setState('idle');
+        };
+    }
     
     // Atalhos de Histórico (Desfazer/Refazer)
     if (e.ctrlKey) {
@@ -645,14 +753,36 @@ importMapInput?.addEventListener('change', () => {
             updateFloorButtons();
             refreshPlayerMovementSpeed();
             console.log('[Engine] Mapa carregado:', loaded.name, loaded.spawn);
+            toast.success(`Mapa "${loaded.name}" carregado com sucesso!`);
         } catch (err) {
             console.error('[Engine] Falha ao importar mapa:', err);
-            alert('JSON de mapa inválido. Use export v1 ou formato legado.');
+            popup.alert('JSON de mapa inválido. Use export v1 ou formato legado.', 'Falha na Importação');
         }
         importMapInput.value = '';
     };
     reader.readAsText(file);
 });
+
+function isEntityAtTile(tx: number, ty: number, z: number, excludeId?: string): boolean {
+    // Se for Administrador (GM) com Noclip ligado, ignora colisão
+    const permissions = getRolePermissions(currentRole);
+    const noclip = permissions.canToggleCollision && collisionToggle && !collisionToggle.checked;
+    if (noclip && excludeId === 'player') return false;
+
+    // 1. Verifica se o jogador está nesse tile
+    if (excludeId !== 'player' && player.tileX === tx && player.tileY === ty && player.worldZ === z) {
+        return true;
+    }
+    
+    // 2. Verifica se algum NPC está nesse tile
+    for (const npc of npcs) {
+        if (npc.id !== excludeId && npc.tileX === tx && npc.tileY === ty && npc.worldZ === z) {
+            return true;
+        }
+    }
+    
+    return false;
+}
 
 function isWalkable(
     worldX: number,
@@ -665,7 +795,17 @@ function isWalkable(
     stairDir?: 'up' | 'down';
 } {
     try {
-        return queryWalkable(createCollisionContext(), worldX, worldY, z);
+        const result = queryWalkable(createCollisionContext(), worldX, worldY, z);
+        if (!result.walkable) return result;
+        
+        // Impede o jogador de passar por cima de NPCs
+        const tx = Math.floor(worldX / TILE_SIZE_SCREEN);
+        const ty = Math.floor(worldY / TILE_SIZE_SCREEN);
+        if (isEntityAtTile(tx, ty, z, 'player')) {
+            return { walkable: false, speed: 0, isStair: false };
+        }
+        
+        return result;
     } catch (err) {
         console.error('Erro em isWalkable:', err);
         return { walkable: false, speed: 0, isStair: false };
@@ -677,14 +817,152 @@ function isStairHoleAtTile(tx: number, ty: number, z: number): boolean {
 }
 
 // --- LOOP PRINCIPAL ---
+let lastNpcMoveTime = 0;
+function tickNpcAI(nowMs: number) {
+    npcs.forEach(npc => {
+        // 1. VERIFICAÇÃO DE PROXIMIDADE DO JOGADOR (Interação)
+        const dxToPlayer = player.tileX - npc.tileX;
+        const dyToPlayer = player.tileY - npc.tileY;
+        const distToPlayer = Math.abs(dxToPlayer) + Math.abs(dyToPlayer);
+        
+        const isNearPlayer = (distToPlayer <= 1.5 && player.worldZ === npc.worldZ);
+
+        if (isNearPlayer) {
+            // Se o jogador estiver muito perto, o NPC para e olha na direção dele!
+            if (npc.animController.currentState === 'walk') {
+                npc.setState('idle');
+            }
+            
+            // Determina a direção olhando para o jogador
+            if (Math.abs(dxToPlayer) > Math.abs(dyToPlayer)) {
+                npc.setDirection(dxToPlayer > 0 ? 'right' : 'left');
+            } else {
+                npc.setDirection(dyToPlayer > 0 ? 'down' : 'up');
+            }
+
+            // Fala aleatoriamente se ainda não estiver falando
+            if (!npc.dialogueText && Math.random() < 0.005) {
+                const phrases = [
+                    "Olá, aventureiro!",
+                    "Belo dia para explorar!",
+                    "Precisa de ajuda?",
+                    "Aperte Espaço para atacar!",
+                    "Aperte X para sentar!",
+                    "Aperte H para morrer!"
+                ];
+                npc.speak(phrases[Math.floor(Math.random() * phrases.length)]);
+            }
+            return; // Interrompe o movimento aleatório enquanto interage
+        }
+
+        // 2. MOVIMENTAÇÃO ALEATÓRIA DENTRO DO SPAWN RADIUS
+        if (nowMs - lastNpcMoveTime > 3000) {
+            if (Math.random() < 0.4) { // 40% de chance de decidir andar
+                const dirs = ['up', 'down', 'left', 'right'] as const;
+                const randomDir = dirs[Math.floor(Math.random() * dirs.length)];
+                npc.setDirection(randomDir);
+                
+                let dx = 0;
+                let dy = 0;
+                if (randomDir === 'up') dy = -1;
+                else if (randomDir === 'down') dy = 1;
+                else if (randomDir === 'left') dx = -1;
+                else if (randomDir === 'right') dx = 1;
+                
+                const newTileX = npc.tileX + dx;
+                const newTileY = npc.tileY + dy;
+                
+                // Valida se a nova coordenada está dentro do Raio Máximo (maxRadius) em relação ao Spawn Original!
+                const isWithinRadius = Math.abs(newTileX - npc.spawnX) <= npc.maxRadius &&
+                                       Math.abs(newTileY - npc.spawnY) <= npc.maxRadius;
+                
+                if (isWithinRadius && newTileX >= 0 && newTileX < MAP_SIZE && newTileY >= 0 && newTileY < MAP_SIZE) {
+                    const targetPixelX = newTileX * TILE_SIZE_SCREEN;
+                    const targetPixelY = newTileY * TILE_SIZE_SCREEN;
+                    
+                    // Valida colisão de cenário AND se o tile já está ocupado por outro NPC ou pelo Jogador!
+                    const isOccupied = isEntityAtTile(newTileX, newTileY, npc.worldZ, npc.id);
+                    const scenarioWalkable = queryWalkable(createCollisionContext(), targetPixelX, targetPixelY, npc.worldZ).walkable;
+                    
+                    if (scenarioWalkable && !isOccupied) {
+                        npc.tileX = newTileX;
+                        npc.tileY = newTileY;
+                        npc.setState('walk');
+                    }
+                }
+            }
+        }
+    });
+
+    if (nowMs - lastNpcMoveTime > 3000) {
+        lastNpcMoveTime = nowMs;
+    }
+    
+    // Suaviza a posição física dos NPCs em direção ao tile alvo (interpolação simples)
+    npcs.forEach(npc => {
+        const targetWorldX = npc.tileX * TILE_SIZE_SCREEN;
+        const targetWorldY = npc.tileY * TILE_SIZE_SCREEN;
+        const speed = 2.5; // Pixels por frame para caminhar fluido
+        
+        if (npc.worldX < targetWorldX) npc.worldX = Math.min(targetWorldX, npc.worldX + speed);
+        else if (npc.worldX > targetWorldX) npc.worldX = Math.max(targetWorldX, npc.worldX - speed);
+        
+        if (npc.worldY < targetWorldY) npc.worldY = Math.min(targetWorldY, npc.worldY + speed);
+        else if (npc.worldY > targetWorldY) npc.worldY = Math.max(targetWorldY, npc.worldY - speed);
+        
+        if (npc.worldX === targetWorldX && npc.worldY === targetWorldY) {
+            if (npc.animController.currentState === 'walk') {
+                npc.setState('idle');
+            }
+        } else {
+            npc.setState('walk');
+        }
+        
+        npc.update(nowMs);
+    });
+}
+
 function update() {
     const nowMs = performance.now();
+    tickNpcAI(nowMs);
 
     speedBuffs.tick(nowMs);
 
     if (!gridMovement.stepping) {
         refreshPlayerMovementSpeed(nowMs);
     }
+
+    let inputDir: 'north' | 'south' | 'east' | 'west' | null = null;
+    if (keys['w'] || keys['arrowup']) inputDir = 'north';
+    else if (keys['s'] || keys['arrowdown']) inputDir = 'south';
+    else if (keys['a'] || keys['arrowleft']) inputDir = 'west';
+    else if (keys['d'] || keys['arrowright']) inputDir = 'east';
+
+    if (inputDir) {
+        const animDirMap = {
+            north: 'up',
+            south: 'down',
+            west: 'left',
+            east: 'right'
+        } as const;
+        activeCharacterController.setDirection(animDirMap[inputDir]);
+    }
+
+    if (activeCharacterController.currentState !== 'attack' &&
+        activeCharacterController.currentState !== 'cast' &&
+        activeCharacterController.currentState !== 'sit' &&
+        activeCharacterController.currentState !== 'dead') {
+        if (gridMovement.stepping) {
+            activeCharacterController.setState('walk');
+        } else {
+            activeCharacterController.setState('idle');
+        }
+    } else if (gridMovement.stepping) {
+        // Se começar a andar, cancela os estados especiais e vai para caminhada!
+        activeCharacterController.setState('walk');
+    }
+
+    activeCharacterController.update(nowMs, gridMovement.stepDurationMs);
 
     const zBefore = player.worldZ;
     tickGridMovement({
@@ -784,12 +1062,47 @@ function draw() {
             ctx.globalAlpha = 1.0;
         }
 
+        // Desenha todos os NPCs no andar atual
+        npcs.forEach(npc => {
+            if (npc.worldZ === z) {
+                npc.draw(ctx, camera, TILE_SIZE_SCREEN);
+                
+                // Desenha o nome do NPC acima dele
+                ctx.fillStyle = '#4ade80';
+                ctx.font = 'bold 8px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(npc.name, npc.worldX - camera.x + TILE_SIZE_SCREEN / 2, npc.worldY - camera.y - 4);
+            }
+        });
+
         if (player.worldZ === z) {
             ctx.globalAlpha = 1.0;
-            const knight = TILE_TYPES[6];
-            if (knight && knight.image && knight.image.complete) {
-                ctx.drawImage(knight.image, player.worldX - camera.x, player.worldY - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+            if (activeCharacterController.isLoaded && activeCharacterController.image) {
+                const rect = activeCharacterController.getSourceRect();
+                const sw = rect.sw;
+                const sh = rect.sh;
+                // Alinhamento Centro-Inferior (Bottom-Center)
+                const drawX = player.worldX - camera.x + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
+                const drawY = player.worldY - camera.y + (TILE_SIZE_SCREEN - sh) + rect.ay;
+                
+                ctx.drawImage(
+                    activeCharacterController.image,
+                    rect.sx, rect.sy, sw, sh,
+                    drawX, drawY,
+                    sw, sh
+                );
+            } else {
+                const knight = TILE_TYPES[6];
+                if (knight && knight.image && knight.image.complete) {
+                    ctx.drawImage(knight.image, player.worldX - camera.x, player.worldY - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                }
             }
+            
+            // Desenha o nome do jogador acima dele
+            ctx.fillStyle = '#38bdf8';
+            ctx.font = 'bold 8px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(activeCharacterController.config.name, player.worldX - camera.x + TILE_SIZE_SCREEN / 2, player.worldY - camera.y - 4);
         }
     });
 }
@@ -834,6 +1147,32 @@ function resize() {
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
 }
+
+function initMapEditorTabSwitching() {
+    const tabsContainer = document.getElementById('mapEditorTabs');
+    if (!tabsContainer) return;
+
+    tabsContainer.addEventListener('click', (e) => {
+        const btn = (e.target as Element).closest('[data-map-tab]');
+        if (!btn) return;
+
+        const targetTab = btn.getAttribute('data-map-tab');
+        if (!targetTab) return;
+
+        // Atualiza botões de abas ativas
+        tabsContainer.querySelectorAll('[data-map-tab]').forEach(b => {
+            b.classList.toggle('active', b === btn);
+        });
+
+        // Mostra/oculta os conteúdos internos
+        document.querySelectorAll('.map-tab-content').forEach(content => {
+            const isTarget = content.id === `mapTabContent_${targetTab}`;
+            (content as HTMLElement).style.display = isTarget ? 'block' : 'none';
+        });
+    });
+}
+
 window.addEventListener('resize', resize);
 resize();
+initMapEditorTabSwitching();
 loop();

@@ -11,7 +11,10 @@ export type FlyoutPanelId =
     | 'mechanics'
     | 'dev'
     | 'account'
-    | 'minimap';
+    | 'minimap'
+    | 'character'
+    | 'sprite_creator'
+    | 'map_editor';
 
 const PANEL_TITLES: Record<FlyoutPanelId, string> = {
     paint: 'Pintar',
@@ -22,12 +25,16 @@ const PANEL_TITLES: Record<FlyoutPanelId, string> = {
     dev: 'Teste (dev)',
     account: 'Conta',
     minimap: 'Minimap',
+    character: 'Personagem',
+    sprite_creator: 'Criar Sprites',
+    map_editor: 'Editor de Mapa',
 };
 
 export interface EditorShellController {
     openPanel: (id: FlyoutPanelId) => void;
     closePanel: () => void;
     setEditorMenusVisible: (visible: boolean) => void;
+    getActivePanel: () => FlyoutPanelId | null;
 }
 
 function isFlyoutPanelId(value: string | undefined): value is FlyoutPanelId {
@@ -145,5 +152,5 @@ export function initEditorShell(): EditorShellController {
         }
     }
 
-    return { openPanel, closePanel, setEditorMenusVisible };
+    return { openPanel, closePanel, setEditorMenusVisible, getActivePanel: () => currentPanel };
 }
