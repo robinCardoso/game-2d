@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tibia Map Editor Engine</title>
+  </head>
+  <body>
+    <div id="app">
+      <div class="game-container">
+        <!-- Menu superior compacto -->
+        <header class="top-nav">
+          <div class="logo-area">
+            <div class="logo-box">W</div>
+            <div class="logo-text">
+              2D World Builder
+              <span class="logo-version">v0.6</span>
+            </div>
+          </div>
+
+          <div class="menubar-scroll">
+          <nav class="menubar" id="mainMenubar" aria-label="Menu principal">
+            <div class="menu-item" data-requires-edit="true">
+              <button type="button" class="menu-trigger">Arquivo</button>
+              <div class="menu-dropdown">
+                <button type="button" class="menu-dropdown-item" id="exportBtn">Exportar JSON</button>
+                <button type="button" class="menu-dropdown-item" id="importMapBtn">Importar JSON</button>
+              </div>
+            </div>
+
+            <div class="menu-item" data-requires-edit="true">
+              <button type="button" class="menu-trigger">Editar</button>
+              <div class="menu-dropdown">
+                <button type="button" class="menu-dropdown-item" id="undoBtn" disabled>↩ Desfazer</button>
+                <button type="button" class="menu-dropdown-item" id="redoBtn" disabled>↪ Refazer</button>
+              </div>
+            </div>
+
+            <button type="button" class="menu-pill" data-open-panel="paint" data-requires-edit="true" title="Ferramentas de pintura">Pintar</button>
+            <button type="button" class="menu-pill" data-open-panel="tileset" data-requires-edit="true" title="Paleta de tiles">Tiles</button>
+            <button type="button" class="menu-pill" data-open-panel="floors" data-requires-edit="true" title="Andares -7 … +7">Andar</button>
+
+            <div class="menu-item">
+              <button type="button" class="menu-trigger">Ver</button>
+              <div class="menu-dropdown menu-dropdown--wide">
+                <button type="button" class="menu-dropdown-item" data-open-panel="mechanics">Mecânicas de jogo</button>
+                <button type="button" class="menu-dropdown-item" data-open-panel="stats">Dados técnicos</button>
+                <button type="button" class="menu-dropdown-item" data-open-panel="minimap">Minimap</button>
+              </div>
+            </div>
+
+            <div class="menu-item" data-requires-edit="true">
+              <button type="button" class="menu-trigger">Teste</button>
+              <div class="menu-dropdown">
+                <button type="button" class="menu-dropdown-item" data-open-panel="dev">Buffs e equipamento</button>
+              </div>
+            </div>
+
+            <button type="button" class="menu-pill" data-open-panel="account" title="Tipo de conta (GM / Player)">Conta</button>
+          </nav>
+          </div>
+
+          <div class="top-quick" data-requires-edit="true">
+            <button type="button" class="icon-btn" id="quickUndo" title="Desfazer (Ctrl+Z)" disabled>↩</button>
+            <button type="button" class="icon-btn" id="quickRedo" title="Refazer" disabled>↪</button>
+          </div>
+        </header>
+
+        <input type="file" id="importMapInput" accept=".json,application/json" hidden />
+
+        <!-- Área principal: mapa + painel opcional -->
+        <div class="workspace" id="workspace">
+          <div class="canvas-container" id="canvasContainer">
+            <canvas id="gameCanvas"></canvas>
+            <div class="hint">
+              <span class="accent">WASD</span> mover ·
+              <span class="accent">P/B/E</span> ferramentas ·
+              <span class="accent">Esc</span> fecha painel
+            </div>
+          </div>
+
+          <aside class="flyout-panel" id="flyoutPanel" aria-hidden="true">
+            <div class="flyout-header">
+              <span id="flyoutTitle">Painel</span>
+              <button type="button" class="flyout-close" id="flyoutClose" title="Fechar (Esc)">×</button>
+            </div>
+            <div class="flyout-body">
+              <!-- Pintar: ferramentas + histórico -->
+              <section class="flyout-section" data-panel="paint" id="editorToolsPanel">
+                <div class="tool-grid" id="toolGrid">
+                  <button class="tool-btn active" data-tool="pencil" title="Lápis (P)">✏️</button>
+                  <button class="tool-btn" data-tool="bucket" title="Balde (B)">🪣</button>
+                  <button class="tool-btn" data-tool="eraser" title="Borracha (E)">🧽</button>
+                  <button class="tool-btn" data-tool="eyedropper" title="Conta-gotas (I)">🎨</button>
+                  <button class="tool-btn" data-tool="rectangle" title="Retângulo (U)">⬛</button>
+                  <button class="tool-btn" data-tool="line" title="Linha (L)">📏</button>
+                </div>
+                <p class="flyout-hint">Atalhos: P · B · E · I · U · L</p>
+                <div class="floor-controls" style="margin-top: 10px;">
+                  <button type="button" class="floor-btn" id="undoBtnFlyout" disabled>↩ Desfazer</button>
+                  <button type="button" class="floor-btn" id="redoBtnFlyout" disabled>↪ Refazer</button>
+                </div>
+              </section>
+
+              <!-- Tileset -->
+              <section class="flyout-section" data-panel="tileset" id="tilesetPanel">
+                <div class="category-tabs" id="categoryTabs">
+                  <button class="cat-btn active" data-cat="all">Tudo</button>
+                  <button class="cat-btn" data-cat="ground">Pisos</button>
+                  <button class="cat-btn" data-cat="nature">Natureza</button>
+                  <button class="cat-btn" data-cat="walls">Paredes</button>
+                  <button class="cat-btn" data-cat="items">Itens</button>
+                </div>
+                <div class="tile-grid" id="tileSelector"></div>
+              </section>
+
+              <!-- Andares -->
+              <section class="flyout-section" data-panel="floors">
+                <p class="flyout-hint">PageUp / PageDown — sobe ou desce um andar</p>
+                <div id="floorSelector" role="group" aria-label="Selecionar andar"></div>
+              </section>
+
+              <!-- Stats -->
+              <section class="flyout-section" data-panel="stats">
+                <div class="info-row"><span class="info-label">Cargo</span> <span id="roleBadge" class="role-badge">GM</span></div>
+                <div class="info-row"><span class="info-label">Tile X</span> <span id="posX">50</span></div>
+                <div class="info-row"><span class="info-label">Tile Y</span> <span id="posY">50</span></div>
+                <div class="info-row"><span class="info-label">Z</span> <span id="posZ">0</span></div>
+                <div class="info-row"><span class="info-label">Speed</span> <span id="posSpeed">1</span></div>
+                <div class="info-row"><span class="info-label">Passo</span> <span><span id="posStepMs">320</span>ms · <span id="posTilesPerSec">3.1</span> t/s</span></div>
+                <div class="info-row info-row--dim">base <span id="posStepBaseMs">320</span>ms · piso ×<span id="posTerrainMod">1</span></div>
+                <div class="info-row"><span class="info-label">Equip</span> <span id="posEquip" class="info-value">—</span></div>
+                <div class="info-row"><span class="info-label">Buffs</span> <span id="posBuffs" class="info-value">—</span></div>
+                <p class="flyout-hint" id="posStepDelta">—</p>
+              </section>
+
+              <!-- Mecânicas -->
+              <section class="flyout-section" data-panel="mechanics">
+                <label class="check-row">
+                  <span>Colisão ativa</span>
+                  <input type="checkbox" id="collisionToggle" checked />
+                </label>
+                <label class="check-row">
+                  <span>Equipar barco</span>
+                  <input type="checkbox" id="boatToggle" />
+                </label>
+              </section>
+
+              <!-- Dev -->
+              <section class="flyout-section" data-panel="dev">
+                <button type="button" id="devEquipHasteBoots" class="menu-dropdown-item block-btn">Botas da Pressa</button>
+                <button type="button" id="devEquipLeatherBoots" class="menu-dropdown-item block-btn">Botas de Couro</button>
+                <button type="button" id="devBuffHaste" class="menu-dropdown-item block-btn">Haste (30s)</button>
+                <button type="button" id="devBuffSlow" class="menu-dropdown-item block-btn">Slow (15s)</button>
+                <button type="button" id="devClearBuffs" class="menu-dropdown-item block-btn">Limpar buffs</button>
+                <p class="flyout-hint">Console (F12) mostra comparação ao clicar.</p>
+              </section>
+
+              <!-- Conta -->
+              <section class="flyout-section" data-panel="account">
+                <label class="flyout-label">Simular cargo</label>
+                <select id="roleSelector" class="select-full">
+                  <option value="GM" selected>Game Master [GM]</option>
+                  <option value="Tutor">Tutor [Staff]</option>
+                  <option value="Player">Jogador [Player]</option>
+                </select>
+                <p class="flyout-hint">Player oculta ferramentas de edição do mapa.</p>
+              </section>
+
+              <!-- Minimap -->
+              <section class="flyout-section" data-panel="minimap">
+                <div class="minimap-wrap">
+                  <canvas id="minimapCanvas"></canvas>
+                </div>
+              </section>
+            </div>
+          </aside>
+        </div>
+
+        <!-- Barra de status sempre visível (compacta) -->
+        <footer class="status-bar" id="statusBar">
+          <span class="status-chip" title="Posição no tile"><span id="statusPos">50, 50</span></span>
+          <span class="status-sep">|</span>
+          <span class="status-chip">Z <span id="statusZ">0</span></span>
+          <span class="status-sep">|</span>
+          <span class="status-chip">SPD <span id="statusSpeed">1</span></span>
+          <span class="status-sep">|</span>
+          <span class="status-chip"><span id="statusStepMs">320</span>ms</span>
+          <span class="status-grow"></span>
+          <span class="status-chip status-chip--dim" id="statusRole">GM</span>
+        </footer>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
