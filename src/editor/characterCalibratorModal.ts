@@ -1,4 +1,13 @@
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
+import { computeFrameDimensionsFromGrid } from './calibratorGrid';
+import { toast } from '../utils/popup';
+
+export interface CalibratorOpenOptions {
+    /** map: tile único / spritesheet de terreno; oculta painel de animações */
+    mode?: 'map' | 'character';
+    initialGridCols?: number;
+    initialGridRows?: number;
+}
 
 export interface CalibrationResult {
     frameWidth: number;
@@ -20,7 +29,8 @@ export function openCharacterCalibrator(
     initialConfig: CharacterSpriteConfig,
     initialState: string,
     initialDirection: string,
-    onConfirm: (result: CalibrationResult) => void
+    onConfirm: (result: CalibrationResult) => void,
+    options?: CalibratorOpenOptions
 ) {
     const modal = document.getElementById('calibratorModal');
     const closeBtn = document.getElementById('calibratorClose');
@@ -54,11 +64,29 @@ export function openCharacterCalibrator(
     const calAnimFramesInput = document.getElementById('calAnimFrames') as HTMLInputElement;
     const calAnimSpeedInput = document.getElementById('calAnimSpeed') as HTMLInputElement;
 
+    const calImageSizeLabel = document.getElementById('calImageSizeLabel');
+    const calGridColsInput = document.getElementById('calGridCols') as HTMLInputElement;
+    const calGridRowsInput = document.getElementById('calGridRows') as HTMLInputElement;
+    const calGridApplyBtn = document.getElementById('calGridApplyBtn');
+    const calGrid1x1Btn = document.getElementById('calGrid1x1Btn');
+    const calGrid4x4Btn = document.getElementById('calGrid4x4Btn');
+    const calGridResultLabel = document.getElementById('calGridResultLabel');
+    const calGridRemainderLabel = document.getElementById('calGridRemainderLabel');
+    const calibratorAnimPanel = document.getElementById('calibratorAnimPanel');
+
     if (!modal || !canvas || !ctx) return;
 
+    const imageW = imageElement.naturalWidth || imageElement.width;
+    const imageH = imageElement.naturalHeight || imageElement.height;
+    const isMapMode = options?.mode === 'map';
+
+    if (calibratorAnimPanel) {
+        calibratorAnimPanel.style.display = isMapMode ? 'none' : '';
+    }
+
     // Cópia profunda das configurações para manipulação interativa no modal
-    let localFrameWidth = initialConfig.frameWidth;
-    let localFrameHeight = initialConfig.frameHeight;
+    let localFrameWidth = initialConfig.frameWidth > 0 ? initialConfig.frameWidth : imageW;
+    let localFrameHeight = initialConfig.frameHeight > 0 ? initialConfig.frameHeight : imageH;
     let localOffsetX = initialConfig.offsetX ?? 0;
     let localOffsetY = initialConfig.offsetY ?? 0;
     let localGapX = initialConfig.gapX ?? 0;
@@ -71,13 +99,101 @@ export function openCharacterCalibrator(
     let activeState = initialState;
     let activeDirection = initialDirection;
 
+    let localGridCols = Math.max(1, options?.initialGridCols ?? (isMapMode ? 1 : 1));
+    let localGridRows = Math.max(1, options?.initialGridRows ?? (isMapMode ? 1 : 1));
+
     // Ajusta o Canvas para a imagem real
-    canvas.width = imageElement.naturalWidth || imageElement.width;
-    canvas.height = imageElement.naturalHeight || imageElement.height;
+    canvas.width = imageW;
+    canvas.height = imageH;
+
+    function updateImageSizeLabel(): void {
+        if (calImageSizeLabel) {
+            calImageSizeLabel.textContent = `Imagem: ${imageW} × ${imageH} px`;
+        }
+    }
+
+    function syncGridInputsToLocal(): void {
+        if (calGridColsInput) calGridColsInput.value = String(localGridCols);
+        if (calGridRowsInput) calGridRowsInput.value = String(localGridRows);
+    }
+
+    function readGridInputsFromUI(): { cols: number; rows: number } {
+        const cols = Math.max(1, parseInt(calGridColsInput?.value ?? '1', 10) || 1);
+        const rows = Math.max(1, parseInt(calGridRowsInput?.value ?? '1', 10) || 1);
+        return { cols, rows };
+    }
+
+    function updateDivisionPreview(result: ReturnType<typeof computeFrameDimensionsFromGrid>): void {
+        if (calGridResultLabel) {
+            calGridResultLabel.textContent = `Frame calculado: ${result.frameWidth} × ${result.frameHeight} px (${result.cols}×${result.rows})`;
+        }
+        if (calGridRemainderLabel) {
+            if (result.remainderX > 0 || result.remainderY > 0) {
+                const parts: string[] = [];
+                if (result.remainderX > 0) parts.push(`${result.remainderX}px à direita`);
+                if (result.remainderY > 0) parts.push(`${result.remainderY}px abaixo`);
+                calGridRemainderLabel.textContent = `⚠ Sobram ${parts.join(' e ')} — ajuste margem, gap ou nº de frames.`;
+                calGridRemainderLabel.style.display = 'block';
+            } else {
+                calGridRemainderLabel.style.display = 'none';
+            }
+        }
+    }
+
+    function applyGridDivision(cols: number, rows: number, showToast = true): boolean {
+        localGridCols = Math.max(1, Math.floor(cols) || 1);
+        localGridRows = Math.max(1, Math.floor(rows) || 1);
+        syncGridInputsToLocal();
+
+        const result = computeFrameDimensionsFromGrid(
+            imageW,
+            imageH,
+            localGridCols,
+            localGridRows,
+            localOffsetX,
+            localOffsetY,
+            localGapX,
+            localGapY
+        );
+
+        if (result.frameWidth < 1 || result.frameHeight < 1) {
+            toast.error('Divisão inválida: frame ficaria com 0 px. Reduza colunas/linhas ou margens.');
+            updateDivisionPreview(result);
+            return false;
+        }
+
+        localFrameWidth = result.frameWidth;
+        localFrameHeight = result.frameHeight;
+        calFrameWidthInput.value = String(localFrameWidth);
+        calFrameHeightInput.value = String(localFrameHeight);
+        updateDivisionPreview(result);
+        renderCalibrator();
+        if (showToast) {
+            toast.success(`Grade ${localGridCols}×${localGridRows} → frames ${localFrameWidth}×${localFrameHeight} px`);
+        }
+        return true;
+    }
+
+    function previewDivisionFromUI(): void {
+        const { cols, rows } = readGridInputsFromUI();
+        const result = computeFrameDimensionsFromGrid(
+            imageW,
+            imageH,
+            cols,
+            rows,
+            localOffsetX,
+            localOffsetY,
+            localGapX,
+            localGapY
+        );
+        updateDivisionPreview(result);
+    }
 
     // Inicializa os inputs com os dados correntes
     calFrameWidthInput.value = localFrameWidth.toString();
     calFrameHeightInput.value = localFrameHeight.toString();
+    syncGridInputsToLocal();
+    updateImageSizeLabel();
     calOffsetXInput.value = localOffsetX.toString();
     calOffsetYInput.value = localOffsetY.toString();
     calGapXInput.value = localGapX.toString();
@@ -165,7 +281,7 @@ export function openCharacterCalibrator(
                     ? (activeAnim && c === activeAnim.row && r >= (activeAnim.startFrame ?? 0) && r < (activeAnim.startFrame ?? 0) + activeAnim.frames)
                     : (activeAnim && r === activeAnim.row && c >= (activeAnim.startFrame ?? 0) && c < (activeAnim.startFrame ?? 0) + activeAnim.frames);
 
-                if (isActive) {
+                if (isActive && !isMapMode) {
                     // Desenha borda verde brilhante
                     ctx.strokeStyle = '#4ade80';
                     ctx.lineWidth = 2.5;
@@ -192,6 +308,33 @@ export function openCharacterCalibrator(
                     ctx.lineWidth = 1;
                 }
             }
+        }
+
+        const preview = computeFrameDimensionsFromGrid(
+            canvas.width,
+            canvas.height,
+            localGridCols,
+            localGridRows,
+            localOffsetX,
+            localOffsetY,
+            localGapX,
+            localGapY
+        );
+        if (preview.remainderX > 0) {
+            const x =
+                localOffsetX +
+                localGridCols * preview.frameWidth +
+                (localGridCols - 1) * localGapX;
+            ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
+            ctx.fillRect(x, localOffsetY, preview.remainderX, canvas.height - localOffsetY);
+        }
+        if (preview.remainderY > 0) {
+            const y =
+                localOffsetY +
+                localGridRows * preview.frameHeight +
+                (localGridRows - 1) * localGapY;
+            ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
+            ctx.fillRect(localOffsetX, y, canvas.width - localOffsetX, preview.remainderY);
         }
     }
 
@@ -254,14 +397,40 @@ export function openCharacterCalibrator(
     ];
     gridInputs.forEach(el => {
         el.addEventListener('input', () => {
-            localFrameWidth = parseInt(calFrameWidthInput.value) || 64;
-            localFrameHeight = parseInt(calFrameHeightInput.value) || 64;
-            localOffsetX = parseInt(calOffsetXInput.value) || 0;
-            localOffsetY = parseInt(calOffsetYInput.value) || 0;
-            localGapX = parseInt(calGapXInput.value) || 0;
-            localGapY = parseInt(calGapYInput.value) || 0;
-            localAnchorX = parseInt(calAnchorXInput.value) || 0;
-            localAnchorY = parseInt(calAnchorYInput.value) || 0;
+            const fw = parseInt(calFrameWidthInput.value, 10);
+            const fh = parseInt(calFrameHeightInput.value, 10);
+            localFrameWidth = Number.isFinite(fw) && fw > 0 ? fw : localFrameWidth;
+            localFrameHeight = Number.isFinite(fh) && fh > 0 ? fh : localFrameHeight;
+            localOffsetX = parseInt(calOffsetXInput.value, 10) || 0;
+            localOffsetY = parseInt(calOffsetYInput.value, 10) || 0;
+            localGapX = parseInt(calGapXInput.value, 10) || 0;
+            localGapY = parseInt(calGapYInput.value, 10) || 0;
+            localAnchorX = parseInt(calAnchorXInput.value, 10) || 0;
+            localAnchorY = parseInt(calAnchorYInput.value, 10) || 0;
+            previewDivisionFromUI();
+            renderCalibrator();
+        });
+    });
+
+    calGridApplyBtn?.addEventListener('click', () => {
+        const { cols, rows } = readGridInputsFromUI();
+        applyGridDivision(cols, rows, true);
+    });
+
+    calGrid1x1Btn?.addEventListener('click', () => {
+        applyGridDivision(1, 1, true);
+    });
+
+    calGrid4x4Btn?.addEventListener('click', () => {
+        applyGridDivision(4, 4, true);
+    });
+
+    [calGridColsInput, calGridRowsInput].forEach((el) => {
+        el?.addEventListener('input', () => {
+            const { cols, rows } = readGridInputsFromUI();
+            localGridCols = cols;
+            localGridRows = rows;
+            previewDivisionFromUI();
             renderCalibrator();
         });
     });
@@ -303,6 +472,10 @@ export function openCharacterCalibrator(
     cancelBtn?.addEventListener('click', closeModal);
 
     confirmBtn?.addEventListener('click', () => {
+        if (localFrameWidth < 1 || localFrameHeight < 1) {
+            toast.error('Largura e altura do frame devem ser maiores que 0. Use "Aplicar divisão" ou ajuste manualmente.');
+            return;
+        }
         syncUIToAnimation();
         onConfirm({
             frameWidth: localFrameWidth,
@@ -322,6 +495,11 @@ export function openCharacterCalibrator(
     });
 
     // Inicialização do Modal
+    if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {
+        applyGridDivision(localGridCols, localGridRows, false);
+    } else {
+        previewDivisionFromUI();
+    }
     syncAnimationToUI();
     updateZoom();
     modal.classList.add('is-open');

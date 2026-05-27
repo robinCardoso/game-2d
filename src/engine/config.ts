@@ -1,7 +1,7 @@
 /** Constantes globais da engine (tile, mapa, andares). */
 export const ENGINE_CONFIG = {
     TILE_SIZE: 64,
-    MAP_SIZE: 100,
+    MAP_SIZE: 256,
     /** Hitbox de passagem calibrada para tile 32px; escala com TILE_SIZE. */
     COLLISION_HITBOX_AT_TILE_32: 22,
     /** Andar mais baixo (subsolo). */

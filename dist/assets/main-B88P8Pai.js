@@ -1,0 +1,1 @@
+import{g as a}from"./authGuard-DC4ROytj.js";import{t}from"./analytics-RLXdCb65.js";import"./characterSerializer-CIuxBmr8.js";t("landing_view");(async()=>{if(await a()){location.href="/characters.html";return}})();document.getElementById("ctaPlay")?.addEventListener("click",()=>{t("cta_play_click")});

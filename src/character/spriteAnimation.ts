@@ -1,3 +1,5 @@
+import { removeChromaKey } from '../utils/imageProcessor';
+
 export type CharacterState = 'idle' | 'walk' | 'attack' | 'sit' | 'dead' | 'cast';
 export type Direction = 'up' | 'down' | 'left' | 'right';
 
@@ -58,7 +60,6 @@ export class SpriteAnimationController {
         this.image.onload = async () => {
             if (this.config.chromaKey && this.image) {
                 try {
-                    const { removeChromaKey } = await import('../utils/imageProcessor');
                     const tolerance = this.config.chromaKeyTolerance ?? 50;
                     this.image = await removeChromaKey(this.image, undefined, tolerance);
                 } catch (e) {

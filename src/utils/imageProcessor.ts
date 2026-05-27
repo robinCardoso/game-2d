@@ -44,14 +44,13 @@ export function removeChromaKey(
                 const imgData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
                 const data = imgData.data;
                 
-                // DETECÇÃO DINÂMICA:
-                // O primeiro pixel (topo-esquerdo, coordenadas X=0, Y=0) quase sempre representa o fundo da spritesheet.
-                // Lemos a cor desse pixel para servir como a cor chave de Chroma Key de forma 100% dinâmica!
-                const detectedKeyColor = {
+                // Usa a cor explícita recebida (fallback para MAGIC_PINK),
+                // mantendo comportamento previsível mesmo com spritesheets heterogêneas.
+                const detectedKeyColor = keyColor ?? {
                     r: data[0],
                     g: data[1],
                     b: data[2]
-                }; 
+                };
                 
                 // Varre os pixels substituindo o Chroma Key por transparente
                 for (let i = 0; i < data.length; i += 4) {

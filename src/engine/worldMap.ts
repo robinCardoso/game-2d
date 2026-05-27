@@ -1,4 +1,14 @@
 import { ENGINE_CONFIG } from './config';
+import {
+    clampImportMapSize,
+    repairWorldMapGrids,
+    sanitizeCreatureSpawns,
+    sanitizeHouses,
+    sanitizeMapDocumentName,
+    sanitizeMetadata,
+    sanitizePortals,
+    sanitizeSpawnPoint,
+} from './mapImportSanitizer';
 import type { MapDocument, SpawnPoint, WorldMap } from './types';
 
 const { MAP_SIZE, MIN_FLOOR_Z, MAX_FLOOR_Z, EMPTY_TILE_ID } = ENGINE_CONFIG;
@@ -13,7 +23,13 @@ export function createEmptyWorldMap(size: number = MAP_SIZE): WorldMap {
     return map;
 }
 
-/** Mapa inicial do editor: sala de pedra no centro do andar 0. */
+/**
+ * Mapa inicial do editor: sala de pedra no centro do andar 0.
+ *
+ * OBSERVAÇÃO: Esta função gerava o mapa padrão de testes (sala de pedra cercada de grama).
+ * Caso seja necessário usá-la novamente para fins de testes ou reset de demonstração,
+ * basta importar e chamar esta função em `src/main.ts` na inicialização da variável `worldMap`.
+ */
 export function createDefaultStarterMap(
     size: number = MAP_SIZE
 ): WorldMap {
@@ -50,7 +66,7 @@ export function cloneWorldMap(source: WorldMap): WorldMap {
 
 export function serializeMapDocument(
     worldMap: WorldMap,
-    options: { name?: string; spawn?: SpawnPoint; size?: number } = {}
+    options: { name?: string; mapId?: string; spawn?: SpawnPoint; size?: number; metadata?: Record<string, import('./types').TileMetadata>; houses?: Record<number, import('./types').HouseData>; spawns?: import('./types').CreatureSpawn[]; portals?: import('./types').PortalData[] } = {}
 ): MapDocument {
     const size = options.size ?? MAP_SIZE;
     const floors: Record<string, number[][]> = {};
@@ -60,9 +76,14 @@ export function serializeMapDocument(
     return {
         version: 1,
         name: options.name ?? 'sem_nome',
+        mapId: options.mapId,
         size,
         tileSize: ENGINE_CONFIG.TILE_SIZE,
         floors,
+        metadata: options.metadata ?? {},
+        houses: options.houses ?? {},
+        spawns: options.spawns ?? [],
+        portals: options.portals ?? [],
         spawn: options.spawn ?? { x: 50, y: 50, z: 0 },
     };
 }
@@ -100,7 +121,7 @@ export function ensureAllFloors(
 export function loadMapFromJson(
     raw: unknown,
     fallbackSpawn?: SpawnPoint
-): { worldMap: WorldMap; spawn: SpawnPoint; name: string } {
+): { worldMap: WorldMap; spawn: SpawnPoint; name: string; mapId?: string; size: number; metadata: Record<string, import('./types').TileMetadata>; houses: Record<number, import('./types').HouseData>; spawns: import('./types').CreatureSpawn[]; portals: import('./types').PortalData[] } {
     if (!raw || typeof raw !== 'object') {
         throw new Error('JSON de mapa inválido');
     }
@@ -109,6 +130,10 @@ export function loadMapFromJson(
 
     if (obj.version === 1 && obj.floors) {
         const doc = obj as unknown as MapDocument;
+
+        const mapSize = clampImportMapSize(doc.size);
+        const docForParse: MapDocument = { ...doc, size: mapSize };
+
         if (
             doc.tileSize !== undefined &&
             doc.tileSize !== ENGINE_CONFIG.TILE_SIZE
@@ -117,17 +142,37 @@ export function loadMapFromJson(
                 `[Engine] Mapa exportado com tileSize=${doc.tileSize}, engine usa ${ENGINE_CONFIG.TILE_SIZE}.`
             );
         }
+
+        const worldMap = deserializeMapDocument(docForParse);
+        repairWorldMapGrids(worldMap, mapSize);
+
         return {
-            worldMap: deserializeMapDocument(doc),
-            spawn: doc.spawn,
-            name: doc.name,
+            worldMap,
+            spawn: sanitizeSpawnPoint(
+                doc.spawn,
+                fallbackSpawn ?? { x: 50, y: 50, z: 0 },
+                mapSize
+            ),
+            name: sanitizeMapDocumentName(doc.name),
+            mapId: typeof doc.mapId === 'string' ? doc.mapId.trim().slice(0, 64) : undefined,
+            size: mapSize,
+            metadata: sanitizeMetadata(doc.metadata, mapSize),
+            houses: sanitizeHouses(doc.houses, mapSize),
+            spawns: sanitizeCreatureSpawns(doc.spawns, mapSize),
+            portals: sanitizePortals(doc.portals, mapSize),
         };
     }
 
     const legacy = raw as WorldMap;
+    const legacySize = MAP_SIZE;
     return {
-        worldMap: ensureAllFloors(cloneWorldMap(legacy)),
+        worldMap: ensureAllFloors(cloneWorldMap(legacy), legacySize),
         spawn: fallbackSpawn ?? { x: 50, y: 50, z: 0 },
         name: 'importado',
+        size: legacySize,
+        metadata: {},
+        houses: {},
+        spawns: [],
+        portals: [],
     };
 }

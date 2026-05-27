@@ -1,0 +1,14 @@
+{
+  "01_terra_border": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-terra-border"
+  },
+  "01_mar_teste": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-mar-teste"
+  }
+}

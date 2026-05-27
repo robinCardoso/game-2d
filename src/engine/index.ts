@@ -12,9 +12,13 @@ export {
 } from './config';
 export type {
     CollisionQueryContext,
+    CreatureSpawn,
+    HouseData,
     MapDocument,
+    PortalData,
     RegistryTile,
     SpawnPoint,
+    TileMetadata,
     TileRegistry,
     WalkProbeResult,
     WorldMap,
@@ -31,3 +35,27 @@ export {
 export { buildTileRegistry, getTileFromRegistry } from './tileRegistry';
 export { isStairHoleAtTile, queryWalkable } from './collision';
 export { getTerrainSpeedModifierAt } from './terrain';
+export {
+    MAP_REGISTRY,
+    BUILTIN_MAP_IDS,
+    getKnownMapIds,
+    getMapEntry,
+    registerMap,
+    unregisterMap,
+} from './mapRegistry';
+export type { MapEntry } from './mapRegistry';
+export { loadMapFile, loadMapFromObject } from './worldLoader';
+export type { LoadedMapResult } from './worldLoader';
+export {
+    cloneLoadedMapResult,
+    createMapInstanceFromTemplate,
+    disposeActiveMapInstance,
+    captureOverworldReturnIfNeeded,
+    clearOverworldReturnContext,
+    getOverworldReturnContext,
+    getActiveMapInstanceId,
+    getActiveInstanceShortLabel,
+    isInsideMapInstance,
+} from './mapInstance';
+export type { OverworldReturnContext } from './mapInstance';
+

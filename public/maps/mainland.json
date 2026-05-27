@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "name": "Continente Principal",
+  "mapId": "mainland",
+  "size": 256,
+  "tileSize": 64,
+  "floors": {},
+  "metadata": {},
+  "houses": {},
+  "spawns": [],
+  "portals": [
+    {
+      "id": "portal_main_to_rook",
+      "targetMapId": "rookgaard",
+      "targetX": 50,
+      "targetY": 50,
+      "targetZ": 0,
+      "tileX": 50,
+      "tileY": 55,
+      "tileZ": 0
+    },
+    {
+      "id": "portal_main_to_orc_cave",
+      "targetMapId": "orc_cave",
+      "targetX": 50,
+      "targetY": 50,
+      "targetZ": 0,
+      "tileX": 55,
+      "tileY": 50,
+      "tileZ": 0
+    }
+  ],
+  "spawn": { "x": 50, "y": 50, "z": 0 }
+}

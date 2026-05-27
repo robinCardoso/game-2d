@@ -1,6 +1,36 @@
-import { getTileProperties, normalizeTileFileName } from '../functions/tileConfig';
-import type { RegistryTile, TileRegistry } from './types';
+import { getTileProperties, normalizeTileFileName, type TileProperties } from '../functions/tileConfig';
+import type { PaletteCategory, RegistryTile, TileRegistry } from './types';
 import { ENGINE_CONFIG, tileAssetSizeSuffix } from './config';
+import customTileProperties from '../../tiles/tile_properties.json';
+
+/** Mapeia pasta do PNG para as abas da paleta (Pisos, Natureza, Paredes, Itens). */
+export function resolvePaletteCategory(
+    globPath: string,
+    folderCategory: string
+): PaletteCategory {
+    const pathLower = globPath.replace(/\\/g, '/').toLowerCase();
+    const folder = folderCategory.toLowerCase();
+
+    if (pathLower.includes('/items/') || folder === 'items') {
+        return 'items';
+    }
+    if (
+        folder.includes('wall') ||
+        pathLower.includes('/walls/') ||
+        pathLower.includes('stone_wall')
+    ) {
+        return 'walls';
+    }
+    if (
+        folder === 'nature' ||
+        folder.includes('tree') ||
+        folder.includes('bush') ||
+        pathLower.includes('/nature/')
+    ) {
+        return 'nature';
+    }
+    return 'ground';
+}
 
 const OLD_ID_MAP: Record<string, number> = {
     grass: 0,
@@ -58,15 +88,23 @@ export function buildTileRegistry(): TileRegistry {
         const img = new Image();
         img.src = url;
         const props = getTileProperties(fileName);
+        const custom = (customTileProperties as Record<string, TileProperties>)[fileName]
+            ?? (customTileProperties as Record<string, TileProperties>)[baseName];
+
+        const paletteCategory = resolvePaletteCategory(path, category);
 
         registry[id] = {
             id,
             name:
+                custom?.nameOverride ||
                 props.nameOverride ||
                 baseName.replace(/_/g, ' '),
             image: img,
             category,
+            paletteCategory,
+            fileKey: fileName,
             ...props,
+            ...custom,
         };
     });
 

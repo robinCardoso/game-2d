@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Criar personagem — 2D World</title>
+    <link rel="stylesheet" href="/src/shared/shell.css" />
+  </head>
+  <body class="shell-page">
+    <div class="shell-card">
+      <div class="shell-logo">
+        <h1 id="wizardTitle">Novo personagem</h1>
+        <p id="wizardStep">Passo 1 de 3 — Nome</p>
+      </div>
+      <p id="createError" class="shell-error" hidden></p>
+
+      <div id="step1">
+        <div class="shell-field">
+          <label for="charName">Nome do personagem</label>
+          <input id="charName" maxlength="20" placeholder="Ex: Sir Galahad" />
+        </div>
+        <button type="button" id="next1" class="shell-btn">Próximo</button>
+      </div>
+
+      <div id="step2" hidden>
+        <div class="shell-field">
+          <label for="preset">Aparência</label>
+          <select id="preset">
+            <option value="knight">Cavaleiro</option>
+          </select>
+        </div>
+        <img id="presetPreview" src="/tiles/characters/knight.png" alt="Preview" width="64" height="64" style="image-rendering: pixelated; display: block; margin: 0 auto 16px" />
+        <button type="button" id="next2" class="shell-btn">Próximo</button>
+      </div>
+
+      <div id="step3" hidden>
+        <p style="text-align: center; color: #94a3b8; margin-bottom: 16px">
+          <strong id="summaryName"></strong><br />
+          Nascerá em <strong>Rookgaard</strong>
+        </p>
+        <button type="button" id="confirmCreate" class="shell-btn">Criar e voltar</button>
+      </div>
+
+      <p class="shell-links"><a href="/characters.html">Cancelar</a></p>
+    </div>
+    <script type="module" src="/src/characters/create.ts"></script>
+  </body>
+</html>

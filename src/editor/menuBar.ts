@@ -119,6 +119,13 @@ export function initEditorShell(): EditorShellController {
             const wasOpen = item.classList.contains('is-open');
             closeAllDropdowns();
             if (!wasOpen) item.classList.add('is-open');
+            return;
+        }
+
+        // Se clicou em um item de dropdown comum que não abre painel (ex: exportar, teleportar), fecha os dropdowns
+        const dropdownItem = target.closest<HTMLElement>('.menu-dropdown-item');
+        if (dropdownItem) {
+            closeAllDropdowns();
         }
     });
 

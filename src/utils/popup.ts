@@ -154,5 +154,71 @@ export const popup = {
             okBtn.onclick = () => close(true);
             cancelBtn.onclick = () => close(false);
         });
-    }
+    },
+
+    /**
+     * Campo de texto com Confirmar/Cancelar. Retorna `null` se cancelado.
+     */
+    prompt(
+        message: string,
+        defaultValue: string = '',
+        title: string = 'Entrada'
+    ): Promise<string | null> {
+        return new Promise((resolve) => {
+            if (modalOverlay) {
+                modalOverlay.remove();
+            }
+
+            modalOverlay = document.createElement('div');
+            modalOverlay.className = 'custom-modal-overlay';
+
+            const safeDefault = defaultValue.replace(/"/g, '&quot;');
+
+            modalOverlay.innerHTML = `
+                <div class="custom-modal-box">
+                    <div class="custom-modal-header">
+                        <span class="custom-modal-title">✏️ ${title}</span>
+                    </div>
+                    <div class="custom-modal-body">
+                        <p style="margin:0 0 10px 0;">${message}</p>
+                        <input type="text" id="modalPromptInput" class="select-full" value="${safeDefault}"
+                            style="width:100%;background:#111318;border:1px solid #3f4452;border-radius:6px;padding:8px 10px;color:#fff;font-size:13px;outline:none;" />
+                    </div>
+                    <div class="custom-modal-footer">
+                        <button class="custom-modal-btn secondary" id="modalCancelBtn">Cancelar</button>
+                        <button class="custom-modal-btn primary" id="modalOkBtn">Confirmar</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(modalOverlay);
+
+            requestAnimationFrame(() => {
+                modalOverlay!.classList.add('show');
+            });
+
+            const input = modalOverlay.querySelector('#modalPromptInput') as HTMLInputElement;
+            const okBtn = modalOverlay.querySelector('#modalOkBtn') as HTMLButtonElement;
+            const cancelBtn = modalOverlay.querySelector('#modalCancelBtn') as HTMLButtonElement;
+
+            input?.focus();
+            input?.select();
+
+            const close = (result: string | null) => {
+                modalOverlay!.classList.remove('show');
+                modalOverlay!.addEventListener('transitionend', () => {
+                    modalOverlay!.remove();
+                    modalOverlay = null;
+                    resolve(result);
+                }, { once: true });
+            };
+
+            okBtn.onclick = () => close(input?.value ?? '');
+            cancelBtn.onclick = () => close(null);
+            input?.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') close(input.value);
+                if (e.key === 'Escape') close(null);
+            });
+        });
+    },
 };

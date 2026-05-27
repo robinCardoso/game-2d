@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "name": "Caverna dos Orcs",
+  "mapId": "orc_cave",
+  "size": 256,
+  "tileSize": 64,
+  "floors": {},
+  "metadata": {},
+  "houses": {},
+  "spawns": [],
+  "portals": [
+    {
+      "id": "portal_cave_to_main",
+      "targetMapId": "mainland",
+      "targetX": 50,
+      "targetY": 50,
+      "targetZ": 0,
+      "tileX": 50,
+      "tileY": 50,
+      "tileZ": 0
+    }
+  ],
+  "spawn": { "x": 50, "y": 50, "z": 0 }
+}

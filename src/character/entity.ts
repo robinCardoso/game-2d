@@ -9,6 +9,7 @@ export class GameEntity {
     worldY: number;
     worldZ: number;
     animController: SpriteAnimationController;
+    type: 'monster' | 'npc';
 
     spawnX: number;
     spawnY: number;
@@ -16,7 +17,7 @@ export class GameEntity {
     dialogueText: string | null = null;
     dialogueTimer: number = 0;
 
-    constructor(id: string, name: string, config: CharacterSpriteConfig, tileX: number, tileY: number, z: number, maxRadius = 3) {
+    constructor(id: string, name: string, config: CharacterSpriteConfig, tileX: number, tileY: number, z: number, maxRadius = 3, type: 'monster' | 'npc' = 'npc') {
         this.id = id;
         this.name = name;
         this.tileX = tileX;
@@ -27,6 +28,7 @@ export class GameEntity {
         this.worldX = tileX * 64; // TILE_SIZE
         this.worldY = tileY * 64;
         this.worldZ = z;
+        this.type = type;
         this.animController = new SpriteAnimationController(config);
     }
 
