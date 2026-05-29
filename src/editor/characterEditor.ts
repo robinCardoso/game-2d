@@ -58,6 +58,7 @@ export function initCharacterEditor() {
 
     const loadSpriteBtn = document.getElementById('loadSpriteBtn');
     const importSpriteInput = document.getElementById('importSpriteInput') as HTMLInputElement;
+    const upscaleSpriteBtn = document.getElementById('upscaleSpriteBtn');
 
     const templateSelectEl = document.getElementById('charTemplateSelect') as HTMLSelectElement;
     const chromaKeyToggleEl = document.getElementById('charChromaKeyToggle') as HTMLInputElement;
@@ -113,6 +114,11 @@ export function initCharacterEditor() {
         frameWidthEl.value = config.frameWidth.toString();
         frameHeightEl.value = config.frameHeight.toString();
         
+        if (upscaleSpriteBtn) {
+            const isSmallFrame = config.frameWidth > 0 && config.frameWidth <= 48;
+            upscaleSpriteBtn.style.display = (activeCharacterController.isLoaded && isSmallFrame) ? 'block' : 'none';
+        }
+        
         offsetXEl.value = (config.offsetX ?? 0).toString();
         offsetYEl.value = (config.offsetY ?? 0).toString();
         gapXEl.value = (config.gapX ?? 0).toString();
@@ -156,15 +162,30 @@ export function initCharacterEditor() {
     // Atualiza a configuração do controller ativo com base nos campos da tela
     function syncUIToController() {
         const config = activeCharacterController.config;
-        config.frameWidth = parseInt(frameWidthEl.value) || 64;
-        config.frameHeight = parseInt(frameHeightEl.value) || 64;
         
-        config.offsetX = parseInt(offsetXEl.value) ?? 0;
-        config.offsetY = parseInt(offsetYEl.value) ?? 0;
-        config.gapX = parseInt(gapXEl.value) ?? 0;
-        config.gapY = parseInt(gapYEl.value) ?? 0;
-        config.anchorX = parseInt(anchorXEl.value) ?? 0;
-        config.anchorY = parseInt(anchorYEl.value) ?? 0;
+        const fw = parseInt(frameWidthEl.value, 10);
+        config.frameWidth = Number.isNaN(fw) || fw < 1 ? 64 : fw;
+        
+        const fh = parseInt(frameHeightEl.value, 10);
+        config.frameHeight = Number.isNaN(fh) || fh < 1 ? 64 : fh;
+        
+        const ox = parseInt(offsetXEl.value, 10);
+        config.offsetX = Number.isNaN(ox) ? 0 : ox;
+        
+        const oy = parseInt(offsetYEl.value, 10);
+        config.offsetY = Number.isNaN(oy) ? 0 : oy;
+        
+        const gx = parseInt(gapXEl.value, 10);
+        config.gapX = Number.isNaN(gx) ? 0 : gx;
+        
+        const gy = parseInt(gapYEl.value, 10);
+        config.gapY = Number.isNaN(gy) ? 0 : gy;
+        
+        const ax = parseInt(anchorXEl.value, 10);
+        config.anchorX = Number.isNaN(ax) ? 0 : ax;
+        
+        const ay = parseInt(anchorYEl.value, 10);
+        config.anchorY = Number.isNaN(ay) ? 0 : ay;
 
         const state = animStateEl.value as CharacterState;
         const dir = animDirEl.value as Direction;
@@ -175,17 +196,26 @@ export function initCharacterEditor() {
         }
 
         const anim = config.animations[key];
-        anim.row = parseInt(animRowEl.value) ?? 0;
-        anim.startFrame = parseInt(animStartFrameEl.value) ?? 0;
-        anim.frames = Math.max(1, parseInt(animFramesEl.value) ?? 1);
-        anim.speedFps = Math.max(1, parseInt(animSpeedEl.value) ?? 1);
+        
+        const valRow = parseInt(animRowEl.value, 10);
+        anim.row = Number.isNaN(valRow) ? 0 : valRow;
+
+        const valStart = parseInt(animStartFrameEl.value, 10);
+        anim.startFrame = Number.isNaN(valStart) ? 0 : valStart;
+
+        const valFrames = parseInt(animFramesEl.value, 10);
+        anim.frames = Number.isNaN(valFrames) || valFrames < 1 ? 1 : valFrames;
+
+        const valSpeed = parseInt(animSpeedEl.value, 10);
+        anim.speedFps = Number.isNaN(valSpeed) || valSpeed < 1 ? 1 : valSpeed;
 
         activeCharacterController.setState(activeCharacterController.currentState);
         if (chromaKeyToggleEl) {
             config.chromaKey = chromaKeyToggleEl.checked;
         }
         if (chromaKeyToleranceEl) {
-            config.chromaKeyTolerance = parseInt(chromaKeyToleranceEl.value) || 50;
+            const tolerance = parseInt(chromaKeyToleranceEl.value, 10);
+            config.chromaKeyTolerance = Number.isNaN(tolerance) || tolerance < 0 ? 50 : tolerance;
         }
         if (charNameInputEl) {
             config.name = charNameInputEl.value;
@@ -453,17 +483,18 @@ export function initCharacterEditor() {
     });
 
     // Salvar no Servidor (Físico via API do plugin Vite)
-    saveServerBtn?.addEventListener('click', async () => {
+    async function saveActiveCharacterToServer(showToastOnSuccess = true) {
         if (!activeCharacterController.isLoaded || !activeCharacterController.image) {
             toast.error('Nenhuma imagem de spritesheet carregada para salvar.');
             return;
         }
 
         try {
-            // Desabilita o botão temporariamente
-            (saveServerBtn as HTMLButtonElement).disabled = true;
-            const originalText = saveServerBtn.innerText;
-            saveServerBtn.innerText = '⌛ Gravando...';
+            const originalText = saveServerBtn ? saveServerBtn.innerText : '💾 Salvar no Servidor';
+            if (saveServerBtn) {
+                (saveServerBtn as HTMLButtonElement).disabled = true;
+                saveServerBtn.innerText = '⌛ Gravando...';
+            }
 
             const configCopy = JSON.parse(JSON.stringify(activeCharacterController.config));
             
@@ -499,10 +530,14 @@ export function initCharacterEditor() {
             // Salva a nova configuração atualizada no localStorage local
             saveConfigToLocalStorage();
             
-            toast.success(`Personagem "${result.name}" salvo com sucesso no servidor!`);
+            if (showToastOnSuccess) {
+                toast.success(`Personagem "${result.name}" salvo com sucesso no servidor!`);
+            }
             
-            saveServerBtn.innerText = originalText;
-            (saveServerBtn as HTMLButtonElement).disabled = false;
+            if (saveServerBtn) {
+                saveServerBtn.innerText = originalText;
+                (saveServerBtn as HTMLButtonElement).disabled = false;
+            }
 
             // Recarrega a lista do servidor em background
             await reloadServerCharactersList();
@@ -512,9 +547,15 @@ export function initCharacterEditor() {
         } catch (err: any) {
             console.error('[Character Editor] Erro ao salvar no servidor:', err);
             popup.alert(`Falha ao salvar no servidor: ${err.message}`, 'Erro ao Salvar');
-            saveServerBtn.innerText = '💾 Salvar no Servidor';
-            (saveServerBtn as HTMLButtonElement).disabled = false;
+            if (saveServerBtn) {
+                saveServerBtn.innerText = '💾 Salvar no Servidor';
+                (saveServerBtn as HTMLButtonElement).disabled = false;
+            }
         }
+    }
+
+    saveServerBtn?.addEventListener('click', async () => {
+        await saveActiveCharacterToServer(true);
     });
 
     // Importar Personagem (JSON)
@@ -583,6 +624,67 @@ export function initCharacterEditor() {
         reader.readAsDataURL(file);
     });
 
+    // Super-amostragem (Upscale 3x de Pixel Art)
+    upscaleSpriteBtn?.addEventListener('click', async () => {
+        if (!activeCharacterController.isLoaded || !activeCharacterController.image) {
+            toast.error('Nenhuma imagem de spritesheet carregada.');
+            return;
+        }
+
+        try {
+            const config = activeCharacterController.config;
+            const scale = 3;
+            toast.info('Aplicando Super-Amostragem (Upscale 3x)...');
+            
+            const upscaledDataUrl = await new Promise<string>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width * scale;
+                    canvas.height = img.height * scale;
+                    const ctx = canvas.getContext('2d')!;
+                    ctx.imageSmoothingEnabled = false; // Preserva pixels nítidos (Nearest Neighbor)
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = () => reject(new Error('Erro ao processar imagem para upscale.'));
+                img.src = activeCharacterController.image!.src;
+            });
+
+            // 1. Atualiza a URL com a imagem ampliada
+            config.spriteSheetUrl = upscaledDataUrl;
+            
+            // 2. Escala proporcionalmente todas as medidas de pixels por 3x
+            config.frameWidth *= scale;
+            config.frameHeight *= scale;
+            if (config.offsetX !== undefined) config.offsetX *= scale;
+            if (config.offsetY !== undefined) config.offsetY *= scale;
+            if (config.gapX !== undefined) config.gapX *= scale;
+            if (config.gapY !== undefined) config.gapY *= scale;
+            if (config.anchorX !== undefined) config.anchorX *= scale;
+            if (config.anchorY !== undefined) config.anchorY *= scale;
+
+            // 3. Recarrega a imagem no controller
+            activeCharacterController.loadImage();
+            
+            const checkLoaded = async () => {
+                if (activeCharacterController.isLoaded) {
+                    syncControllerToUI();
+                    saveConfigToLocalStorage();
+                    
+                    toast.success('Super-amostragem 3x aplicada! Gravando no servidor...');
+                    await saveActiveCharacterToServer(true);
+                } else {
+                    setTimeout(checkLoaded, 50);
+                }
+            };
+            checkLoaded();
+        } catch (err: any) {
+            console.error('[Upscale] Erro:', err);
+            toast.error(`Falha ao aplicar super-amostragem: ${err.message}`);
+        }
+    });
+
     // Abrir Calibrador de Grade Visual
     const openCalibratorBtn = document.getElementById('openCalibratorBtn');
     openCalibratorBtn?.addEventListener('click', () => {
@@ -597,7 +699,7 @@ export function initCharacterEditor() {
             config,
             activeCharacterController.currentState,
             activeCharacterController.currentDirection,
-            (result) => {
+            async (result) => {
                 config.frameWidth = result.frameWidth;
                 config.frameHeight = result.frameHeight;
                 config.offsetX = result.offsetX;
@@ -621,6 +723,10 @@ export function initCharacterEditor() {
 
                 syncControllerToUI();
                 syncUIToController();
+                
+                // Melhoria inteligente: Salva as posições calibradas automaticamente no servidor!
+                toast.info('Calibração concluída! Gravando no servidor...');
+                await saveActiveCharacterToServer(true);
             }
         );
     });

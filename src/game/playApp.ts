@@ -428,6 +428,7 @@ function resize(): void {
     const container = document.getElementById('canvasContainer')!;
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
+    ctx.imageSmoothingEnabled = false;
 }
 
 function resolveGameServerUrl(): string | null {

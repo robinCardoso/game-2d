@@ -33,12 +33,19 @@ const ITEM_CATEGORY_HINTS = ['decor', 'props', 'furniture'];
 
 /** Sanitiza subpasta (espelha regras do servidor em vite.config.ts). */
 export function sanitizeMapSpriteCategory(raw: string): string {
-    return raw
+    let cleaned = raw
         .trim()
         .replace(/\\/g, '/')
         .replace(/\.\./g, '')
         .replace(/[^a-zA-Z0-9_\-/]/g, '')
         .replace(/^\/+|\/+$/g, '');
+
+    // Remove prefixos redundantes de pasta como 'tiles/terrain/', 'terrain/', etc.
+    cleaned = cleaned
+        .replace(/^(tiles\/)?(terrain|items)\//i, '')
+        .replace(/^(tiles\/)?(terrain|items)$/i, '');
+
+    return cleaned;
 }
 
 function isPseudoRootCategory(category: string): boolean {

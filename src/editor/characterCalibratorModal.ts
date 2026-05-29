@@ -228,10 +228,18 @@ export function openCharacterCalibrator(
             localAnimations[key] = { row: 0, startFrame: 0, frames: 1, speedFps: 5, loop: true };
         }
         const anim = localAnimations[key];
-        anim.row = parseInt(calAnimRowInput.value) ?? 0;
-        anim.startFrame = parseInt(calAnimStartFrameInput.value) ?? 0;
-        anim.frames = Math.max(1, parseInt(calAnimFramesInput.value) ?? 1);
-        anim.speedFps = Math.max(1, parseInt(calAnimSpeedInput.value) ?? 1);
+        
+        const valRow = parseInt(calAnimRowInput.value, 10);
+        anim.row = Number.isNaN(valRow) ? 0 : valRow;
+
+        const valStart = parseInt(calAnimStartFrameInput.value, 10);
+        anim.startFrame = Number.isNaN(valStart) ? 0 : valStart;
+
+        const valFrames = parseInt(calAnimFramesInput.value, 10);
+        anim.frames = Number.isNaN(valFrames) || valFrames < 1 ? 1 : valFrames;
+
+        const valSpeed = parseInt(calAnimSpeedInput.value, 10);
+        anim.speedFps = Number.isNaN(valSpeed) || valSpeed < 1 ? 1 : valSpeed;
     }
 
     // Atualiza a visualização do Zoom

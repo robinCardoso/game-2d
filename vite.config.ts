@@ -4,6 +4,33 @@ import path from 'path';
 
 const MAX_MAP_SAVE_BYTES = 20 * 1024 * 1024;
 
+interface GameConfig {
+  charactersDir: string;
+  mapsDir: string;
+  tilesDir: string;
+}
+
+function getGameConfig(): GameConfig {
+  const configPath = path.resolve(__dirname, 'game_config.json');
+  if (fs.existsSync(configPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return {
+        charactersDir: parsed.charactersDir || 'tiles/characters',
+        mapsDir: parsed.mapsDir || 'public/maps',
+        tilesDir: parsed.tilesDir || 'tiles'
+      };
+    } catch (e) {
+      console.error('[Config] Erro ao ler game_config.json, usando padrão:', e);
+    }
+  }
+  return {
+    charactersDir: 'tiles/characters',
+    mapsDir: 'public/maps',
+    tilesDir: 'tiles'
+  };
+}
+
 function sanitizeMapSaveFilename(filename: unknown): string | null {
   if (typeof filename !== 'string') return null;
   const base = filename.replace(/^.*[/\\]/, '').trim().toLowerCase();
@@ -49,9 +76,18 @@ export default defineConfig({
       name: 'local-saving-backend',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
+          // Redireciona o erro de digitação clássico de 'stucio.html' para 'studio.html'
+          if (req.url && req.url.toLowerCase().startsWith('/stucio.html')) {
+            res.statusCode = 302;
+            res.setHeader('Location', '/studio.html');
+            res.end();
+            return;
+          }
+
           if (req.url === '/api/list-characters' && req.method === 'GET') {
             try {
-              const charactersDir = path.resolve(__dirname, 'tiles/characters');
+              const config = getGameConfig();
+              const charactersDir = path.resolve(__dirname, config.charactersDir);
               const jsonFiles = getJsonFiles(charactersDir);
               const characters = jsonFiles.map(filePath => {
                 const content = fs.readFileSync(filePath, 'utf-8');
@@ -164,9 +200,15 @@ export default defineConfig({
                 
                 let subPath = '';
                 if (category) {
-                  const sanitizedCategory = category
+                  let sanitizedCategory = category
                     .replace(/[^a-zA-Z0-9_\-\/]/g, '')
                     .replace(/\.\./g, '');
+                  
+                  // Remove prefixos redundantes para evitar dupla-anestação no disco
+                  sanitizedCategory = sanitizedCategory
+                    .replace(/^(tiles\/)?(terrain|items)\//i, '')
+                    .replace(/^(tiles\/)?(terrain|items)$/i, '');
+
                   subPath = sanitizedCategory;
                 }
 
@@ -353,24 +395,32 @@ export default defineConfig({
                 const { name, category, spriteBase64, configJson } = JSON.parse(body);
                 const filename = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
                 
+                const config = getGameConfig();
+                const baseDir = config.charactersDir;
+                const baseDirClean = baseDir.replace(/\/+$/, '');
+                
                 // Organização de categorias/subpastas com sanitização robusta contra Directory Traversal
                 let subPath = '';
                 if (category) {
-                  const sanitizedCategory = category
+                  let sanitizedCategory = category
                     .replace(/[^a-zA-Z0-9_\-\/]/g, '') // Permite apenas caracteres seguros e barras
                     .replace(/\.\./g, '');             // Bloqueia subir níveis de diretórios
+                  
+                  // Evita duplo-aninhamento: Remove prefixo de pasta base ou 'characters/' se digitado
+                  const basePrefixReg = new RegExp(`^(${baseDirClean}/|characters/|tiles/characters/)?`, 'i');
+                  sanitizedCategory = sanitizedCategory.replace(basePrefixReg, '');
                   subPath = sanitizedCategory;
                 }
 
-                // Garante que o diretório tiles/characters/{subPath} existe
-                const targetDir = path.resolve(__dirname, 'tiles/characters', subPath);
+                // Garante que o diretório {charactersDir}/{subPath} existe
+                const targetDir = path.resolve(__dirname, baseDir, subPath);
                 if (!fs.existsSync(targetDir)) {
                   fs.mkdirSync(targetDir, { recursive: true });
                 }
                 
                 // 1. Se houver imagem em Base64 enviada, grava fisicamente no disco
                 let spriteSheetUrl = configJson.spriteSheetUrl;
-                const relativeUrlPrefix = subPath ? `tiles/characters/${subPath}` : 'tiles/characters';
+                const relativeUrlPrefix = subPath ? `${baseDirClean}/${subPath}` : baseDirClean;
                 if (spriteBase64 && spriteBase64.startsWith('data:image/png;base64,')) {
                   const imageBuffer = Buffer.from(spriteBase64.replace(/^data:image\/png;base64,/, ""), 'base64');
                   const imagePath = path.resolve(targetDir, `${filename}.png`);

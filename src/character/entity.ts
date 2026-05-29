@@ -61,13 +61,16 @@ export class GameEntity {
         const sw = rect.sw;
         const sh = rect.sh;
         // Alinhamento Centro-Inferior (Bottom-Center)
-        const drawX = this.worldX - camera.x + (tileSize - sw) / 2 + rect.ax;
-        const drawY = this.worldY - camera.y + (tileSize - sh) + rect.ay;
+        const rawX = this.worldX - camera.x + (tileSize - sw) / 2 + rect.ax;
+        const rawY = this.worldY - camera.y + (tileSize - sh) + rect.ay;
+        const zoom = (camera as any).zoom || 1.0;
+        const drawX = Math.round(rawX * zoom) / zoom;
+        const drawY = Math.round(rawY * zoom) / zoom;
         
         ctx.globalAlpha = 1.0;
         ctx.drawImage(
             this.animController.image,
-            rect.sx, rect.sy, sw, sh,
+            rect.sx, rect.sy, sw, sh - 0.5,
             drawX, drawY,
             sw, sh
         );

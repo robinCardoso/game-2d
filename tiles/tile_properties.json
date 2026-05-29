@@ -1,14 +1,14 @@
 {
-  "01_terra_border": {
-    "walkable": true,
+  "01_agua": {
+    "walkable": false,
     "speedModifier": 1,
     "isStair": false,
-    "nameOverride": "01-terra-border"
+    "nameOverride": "01-agua"
   },
-  "01_mar_teste": {
+  "01_grama": {
     "walkable": true,
     "speedModifier": 1,
     "isStair": false,
-    "nameOverride": "01-mar-teste"
+    "nameOverride": "01-grama"
   }
 }

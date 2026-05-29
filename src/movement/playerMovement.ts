@@ -128,9 +128,12 @@ export const PlayerMovement: PlayerMovementController = {
             updateFloorButtons();
         }
 
-        // 6. Atualização de Câmera centralizada no player
-        camera.x = player.worldX - canvas.width / 2;
-        camera.y = player.worldY - canvas.height / 2;
+        // 6. Atualização de Câmera centralizada no player com offset manual de arrasto (arredondado para evitar frestas/linhas pretas)
+        const zoom = (camera as any).zoom || 1.0;
+        const visibleW = canvas.width / zoom;
+        const visibleH = canvas.height / zoom;
+        camera.x = Math.floor(player.worldX - visibleW / 2 + ((camera as any).offsetX || 0));
+        camera.y = Math.floor(player.worldY - visibleH / 2 + ((camera as any).offsetY || 0));
 
         // 7. Atualização do rodapé/UI de coordenadas e posições
         if (posXEl) posXEl.innerText = player.tileX.toString();
@@ -171,9 +174,16 @@ export const PlayerMovement: PlayerMovementController = {
         player.worldX = clampedX * TILE_SIZE_SCREEN;
         player.worldY = clampedY * TILE_SIZE_SCREEN;
 
-        // 4. Centraliza a câmera instantaneamente na nova coordenada
-        camera.x = player.worldX - canvas.width / 2;
-        camera.y = player.worldY - canvas.height / 2;
+        // Reset offsets on teleport
+        if ('offsetX' in camera) (camera as any).offsetX = 0;
+        if ('offsetY' in camera) (camera as any).offsetY = 0;
+
+        // 4. Centraliza a câmera instantaneamente na nova coordenada (arredondado para evitar frestas)
+        const zoom = (camera as any).zoom || 1.0;
+        const visibleW = canvas.width / zoom;
+        const visibleH = canvas.height / zoom;
+        camera.x = Math.floor(player.worldX - visibleW / 2);
+        camera.y = Math.floor(player.worldY - visibleH / 2);
 
         // 5. Atualiza o andar ativo na barra de andares laterais
         updateFloorButtons();

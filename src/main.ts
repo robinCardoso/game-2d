@@ -283,7 +283,15 @@ const player = {
     tileY: 50,
 };
 
-const camera = { x: 0, y: 0 };
+const camera = { x: 0, y: 0, offsetX: 0, offsetY: 0, zoom: 1.0 };
+let isSpacePressed = false;
+let isMiddleDragging = false;
+let isDraggingMap = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialCameraOffsetX = 0;
+let initialCameraOffsetY = 0;
+
 const keys: Record<string, boolean> = {};
 const gridMovement = createGridMovementController();
 
@@ -832,8 +840,9 @@ let previewOverlay: {type: string, x1: number, y1: number, x2: number, y2: numbe
 
 function paint(e: MouseEvent) {
     const rect = canvas.getBoundingClientRect();
-    const tx = Math.floor((e.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
-    const ty = Math.floor((e.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
+    const zoom = camera.zoom || 1.0;
+    const tx = Math.floor(((e.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+    const ty = Math.floor(((e.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
     
     if (tx >= 0 && tx < activeMapSize && ty >= 0 && ty < activeMapSize) {
         const currentTool = mapEditorController.currentTool;
@@ -900,19 +909,76 @@ function paint(e: MouseEvent) {
     }
 }
 
-canvas.addEventListener('mousedown', e => {
-    if (!getRolePermissions(currentRole).canEditMap) {
+function updateCursor() {
+    const activePanel = editorShell?.getActivePanel();
+    const isMapEditPanelActive = activePanel === 'map_editor';
+    if (!isMapEditPanelActive) {
+        canvas.style.cursor = 'default';
         return;
     }
-    // Permite pintar o mapa APENAS quando o painel unificado de edição de mapa (map_editor) está ativo
+    if (isSpacePressed || isMiddleDragging) {
+        canvas.style.cursor = isDraggingMap ? 'grabbing' : 'grab';
+    } else {
+        canvas.style.cursor = 'crosshair';
+    }
+}
+
+canvas.addEventListener('mouseenter', () => {
+    updateCursor();
+});
+
+canvas.addEventListener('mousedown', e => {
+    // Permite pintar ou arrastar o mapa APENAS quando o painel unificado de edição de mapa (map_editor) está ativo
     const activePanel = editorShell?.getActivePanel();
     const isMapEditPanelActive = activePanel === 'map_editor';
     if (!isMapEditPanelActive) {
         return;
     }
+
+    // Suporte para Arrasto (Spacebar + Click ou Botão do Meio)
+    const isMiddleClick = e.button === 1;
+    if (isSpacePressed || isMiddleClick) {
+        e.preventDefault();
+        isDraggingMap = true;
+        if (isMiddleClick) {
+            isMiddleDragging = true;
+        }
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        initialCameraOffsetX = camera.offsetX;
+        initialCameraOffsetY = camera.offsetY;
+        updateCursor();
+
+        const onDragMove = (me: MouseEvent) => {
+            if (!isDraggingMap) return;
+            const dx = me.clientX - dragStartX;
+            const dy = me.clientY - dragStartY;
+            camera.offsetX = initialCameraOffsetX - dx;
+            camera.offsetY = initialCameraOffsetY - dy;
+        };
+
+        const onDragUp = (me: MouseEvent) => {
+            if (me.button === 1 || !isSpacePressed) {
+                isMiddleDragging = false;
+            }
+            isDraggingMap = false;
+            window.removeEventListener('mousemove', onDragMove);
+            window.removeEventListener('mouseup', onDragUp);
+            updateCursor();
+        };
+
+        window.addEventListener('mousemove', onDragMove);
+        window.addEventListener('mouseup', onDragUp);
+        return;
+    }
+
+    if (!getRolePermissions(currentRole).canEditMap) {
+        return;
+    }
     const rect = canvas.getBoundingClientRect();
-    const tx = Math.floor((e.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
-    const ty = Math.floor((e.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
+    const zoom = camera.zoom || 1.0;
+    const tx = Math.floor(((e.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+    const ty = Math.floor(((e.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
     
     const currentTool = mapEditorController.currentTool;
 
@@ -922,13 +988,15 @@ canvas.addEventListener('mousedown', e => {
         previewOverlay = { type: currentTool, x1: tx, y1: ty, x2: tx, y2: ty };
         
         const onMove = (me: MouseEvent) => {
-            const cx = Math.floor((me.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
-            const cy = Math.floor((me.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
+            const zoom = camera.zoom || 1.0;
+            const cx = Math.floor(((me.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+            const cy = Math.floor(((me.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
             previewOverlay = { type: currentTool, x1: startX, y1: startY, x2: cx, y2: cy };
         };
         const onUp = (me: MouseEvent) => {
-            const cx = Math.floor((me.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
-            const cy = Math.floor((me.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
+            const zoom = camera.zoom || 1.0;
+            const cx = Math.floor(((me.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+            const cy = Math.floor(((me.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
             saveState(); // Salva o estado antes de aplicar a forma
             applyShape(currentTool, startX, startY, cx, cy);
             previewOverlay = null;
@@ -1044,8 +1112,9 @@ canvas.addEventListener('contextmenu', e => {
     e.preventDefault(); // Impede o menu padrão do navegador
 
     const rect = canvas.getBoundingClientRect();
-    const tx = Math.floor((e.clientX - rect.left + camera.x) / TILE_SIZE_SCREEN);
-    const ty = Math.floor((e.clientY - rect.top + camera.y) / TILE_SIZE_SCREEN);
+    const zoom = camera.zoom || 1.0;
+    const tx = Math.floor(((e.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+    const ty = Math.floor(((e.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
 
     if (tx >= 0 && tx < activeMapSize && ty >= 0 && ty < activeMapSize) {
         editingTileKey = `${editingFloor}_${ty}_${tx}`;
@@ -1152,7 +1221,16 @@ window.addEventListener('keydown', e => {
     
     if (key === ' ' || key === 'spacebar') {
         e.preventDefault();
-        triggerPlayerAttack();
+        const activePanel = editorShell?.getActivePanel();
+        const isMapEditPanelActive = activePanel === 'map_editor';
+        if (isMapEditPanelActive) {
+            if (!isSpacePressed) {
+                isSpacePressed = true;
+                updateCursor();
+            }
+        } else {
+            triggerPlayerAttack();
+        }
     }
     
     // Novos atalhos para os novos estados de animação
@@ -1223,7 +1301,14 @@ window.addEventListener('keydown', e => {
     if (key === 'u') mapEditorController.setTool('rectangle');
     if (key === 'l') mapEditorController.setTool('line');
 });
-window.addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
+window.addEventListener('keyup', e => {
+    const key = e.key.toLowerCase();
+    keys[key] = false;
+    if (key === ' ' || key === 'spacebar') {
+        isSpacePressed = false;
+        updateCursor();
+    }
+});
 
 function updateFloorButtons(): void {
     floorSelector?.setActive(editingFloor);
@@ -1658,6 +1743,15 @@ function draw() {
     ctx.fillStyle = '#0a0b0e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+    const zoom = camera.zoom || 1.0;
+    ctx.save();
+    ctx.scale(zoom, zoom);
+    ctx.imageSmoothingEnabled = false;
+
+    // Arredonda a câmera na escala física para evitar frestas/linhas pretas de subpixel em qualquer zoom
+    const camX = Math.round(camera.x * zoom) / zoom;
+    const camY = Math.round(camera.y * zoom) / zoom;
+
     getAllFloorZs().forEach(z => {
         const isAbove = z > player.worldZ;
         let playerUnder = false;
@@ -1666,10 +1760,10 @@ function draw() {
         }
         ctx.globalAlpha = (isAbove && playerUnder) ? 0.3 : 1.0;
 
-        const startX = Math.max(0, Math.floor(camera.x / TILE_SIZE_SCREEN));
-        const endX = Math.min(activeMapSize - 1, Math.floor((camera.x + canvas.width) / TILE_SIZE_SCREEN));
-        const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE_SCREEN));
-        const endY = Math.min(activeMapSize - 1, Math.floor((camera.y + canvas.height) / TILE_SIZE_SCREEN));
+        const startX = Math.max(0, Math.floor(camX / TILE_SIZE_SCREEN));
+        const endX = Math.min(activeMapSize - 1, Math.floor((camX + canvas.width / zoom) / TILE_SIZE_SCREEN));
+        const startY = Math.max(0, Math.floor(camY / TILE_SIZE_SCREEN));
+        const endY = Math.min(activeMapSize - 1, Math.floor((camY + canvas.height / zoom) / TILE_SIZE_SCREEN));
 
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
@@ -1677,7 +1771,7 @@ function draw() {
                 if (tid !== -1) {
                     const tile = TILE_TYPES[tid];
                     if (tile && tile.image && tile.image.complete) {
-                        ctx.drawImage(tile.image, x * TILE_SIZE_SCREEN - camera.x, y * TILE_SIZE_SCREEN - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                        ctx.drawImage(tile.image, x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                     }
                 }
                 
@@ -1685,37 +1779,37 @@ function draw() {
                     const meta = worldMetadata[`${z}_${y}_${x}`];
                     if (meta && meta.zoneId && meta.zoneId > 0) {
                         ctx.fillStyle = ZONE_COLORS[meta.zoneId] || 'rgba(255,255,255,0.2)';
-                        ctx.fillRect(x * TILE_SIZE_SCREEN - camera.x, y * TILE_SIZE_SCREEN - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                        ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                         if (meta.zoneId === ZoneType.HOUSE && meta.houseId) {
                             ctx.fillStyle = 'white';
                             ctx.font = 'bold 10px sans-serif';
                             ctx.textAlign = 'center';
-                            ctx.fillText(meta.houseId.toString(), x * TILE_SIZE_SCREEN - camera.x + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camera.y + TILE_SIZE_SCREEN / 2 + 4);
+                            ctx.fillText(meta.houseId.toString(), x * TILE_SIZE_SCREEN - camX + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camY + TILE_SIZE_SCREEN / 2 + 4);
                         }
                     }
                 }
 
-                // Renderiza portais como overlay roxo animado (sempre visível no andar ativo)
+                // Renderiza portais como overlay roxo animado (apenas se a aba 'portals' estiver ativa no editor)
                 {
                     const portal = worldPortals.find(p => p.tileX === x && p.tileY === y && p.tileZ === z);
-                    if (portal && z === player.worldZ) {
+                    if (portal && z === player.worldZ && activeMapEditorTab === 'portals') {
                         const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-                        ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
-                        ctx.fillRect(x * TILE_SIZE_SCREEN - camera.x, y * TILE_SIZE_SCREEN - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
-                        ctx.strokeStyle = `rgba(129, 140, 248, ${0.7 + pulse * 0.3})`;
+                        ctx.fillStyle = `rgba(99, 102, 241, ${0.25 + pulse * 0.2})`;
+                        ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                        ctx.strokeStyle = `rgba(129, 140, 248, ${0.6 + pulse * 0.3})`;
                         ctx.lineWidth = 2;
-                        ctx.strokeRect(x * TILE_SIZE_SCREEN - camera.x + 1, y * TILE_SIZE_SCREEN - camera.y + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
+                        ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
                         ctx.fillStyle = 'rgba(200,210,255,0.9)';
                         ctx.font = `${Math.round(TILE_SIZE_SCREEN * 0.4)}px sans-serif`;
                         ctx.textAlign = 'center';
-                        ctx.fillText('🚪', x * TILE_SIZE_SCREEN - camera.x + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camera.y + TILE_SIZE_SCREEN / 2 + TILE_SIZE_SCREEN * 0.14);
+                        ctx.fillText('🚪', x * TILE_SIZE_SCREEN - camX + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camY + TILE_SIZE_SCREEN / 2 + TILE_SIZE_SCREEN * 0.14);
                     }
                 }
                 
                 if (worldMetadata[`${z}_${y}_${x}`] && (worldMetadata[`${z}_${y}_${x}`].actionId || worldMetadata[`${z}_${y}_${x}`].uniqueId)) {
                     ctx.fillStyle = 'rgba(234, 179, 8, 0.8)';
                     ctx.beginPath();
-                    ctx.arc(x * TILE_SIZE_SCREEN - camera.x + TILE_SIZE_SCREEN - 6, y * TILE_SIZE_SCREEN - camera.y + 6, 3, 0, Math.PI * 2);
+                    ctx.arc(x * TILE_SIZE_SCREEN - camX + TILE_SIZE_SCREEN - 6, y * TILE_SIZE_SCREEN - camY + 6, 3, 0, Math.PI * 2);
                     ctx.fill();
                 }
 
@@ -1723,7 +1817,7 @@ function draw() {
                     const glow = (Math.sin(Date.now() / 150) + 1) / 2;
                     ctx.strokeStyle = `rgba(234, 179, 8, ${0.4 + glow * 0.6})`;
                     ctx.lineWidth = 2;
-                    ctx.strokeRect(x * TILE_SIZE_SCREEN - camera.x + 1, y * TILE_SIZE_SCREEN - camera.y + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
+                    ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
                 }
             }
         }
@@ -1740,7 +1834,7 @@ function draw() {
                     const maxY = Math.max(previewOverlay.y1, previewOverlay.y2);
                     for (let py = minY; py <= maxY; py++) {
                         for (let px = minX; px <= maxX; px++) {
-                            ctx.drawImage(previewTile.image, px * TILE_SIZE_SCREEN - camera.x, py * TILE_SIZE_SCREEN - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                            ctx.drawImage(previewTile.image, px * TILE_SIZE_SCREEN - camX, py * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                         }
                     }
                 } else if (previewOverlay.type === 'line') {
@@ -1750,7 +1844,7 @@ function draw() {
                     let psx = (px1 < px2) ? 1 : -1, psy = (py1 < py2) ? 1 : -1;
                     let perr = pdx - pdy;
                     while (true) {
-                        ctx.drawImage(previewTile.image, px1 * TILE_SIZE_SCREEN - camera.x, py1 * TILE_SIZE_SCREEN - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                        ctx.drawImage(previewTile.image, px1 * TILE_SIZE_SCREEN - camX, py1 * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                         if (px1 === px2 && py1 === py2) break;
                         let pe2 = 2 * perr;
                         if (pe2 > -pdy) { perr -= pdy; px1 += psx; }
@@ -1764,13 +1858,28 @@ function draw() {
         // Desenha todos os NPCs no andar atual
         npcs.forEach(npc => {
             if (npc.worldZ === z) {
-                npc.draw(ctx, camera, TILE_SIZE_SCREEN);
+                npc.draw(ctx, { ...camera, x: camX, y: camY } as any, TILE_SIZE_SCREEN);
                 
-                // Desenha o nome do NPC acima dele
-                ctx.fillStyle = '#4ade80';
-                ctx.font = 'bold 8px sans-serif';
+                // Desenha o nome do NPC baseado no topo real do sprite (cabeça)
+                const rect = npc.animController.getSourceRect();
+                const sw = rect.sw;
+                const sh = rect.sh;
+                const drawX = npc.worldX - camX + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
+                const drawY = npc.worldY - camY + (TILE_SIZE_SCREEN - sh) + rect.ay;
+                const nameX = drawX + sw / 2 - 10;
+                const nameY = drawY - 6;
+
+                ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
                 ctx.textAlign = 'center';
-                ctx.fillText(npc.name, npc.worldX - camera.x + TILE_SIZE_SCREEN / 2, npc.worldY - camera.y - 4);
+                
+                // Borda preta estilo jogo retro de Tibia/RPG
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2.5;
+                ctx.strokeText(npc.name, nameX, nameY);
+                
+                // Preenchimento verde
+                ctx.fillStyle = '#4ade80';
+                ctx.fillText(npc.name, nameX, nameY);
             }
         });
 
@@ -1780,54 +1889,79 @@ function draw() {
                 gameNet.getNetworkInstanceId()
             )) {
                 if (remote.z !== z) continue;
-                const rx = remote.tileX * TILE_SIZE_SCREEN - camera.x;
-                const ry = remote.tileY * TILE_SIZE_SCREEN - camera.y;
+                const rx = remote.tileX * TILE_SIZE_SCREEN - camX;
+                const ry = remote.tileY * TILE_SIZE_SCREEN - camY;
+                
+                // Desenha o corpo do player remoto
                 ctx.fillStyle = 'rgba(244, 114, 182, 0.85)';
                 ctx.fillRect(rx + 10, ry + 10, TILE_SIZE_SCREEN - 20, TILE_SIZE_SCREEN - 20);
                 ctx.strokeStyle = '#fda4af';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(rx + 10, ry + 10, TILE_SIZE_SCREEN - 20, TILE_SIZE_SCREEN - 20);
-                ctx.fillStyle = '#fda4af';
-                ctx.font = 'bold 8px sans-serif';
+                
+                // Nome com borda preta estilo retro RPG
+                ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
                 ctx.textAlign = 'center';
-                ctx.fillText(
-                    remote.name,
-                    rx + TILE_SIZE_SCREEN / 2,
-                    ry - 4
-                );
+                
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2.5;
+                ctx.strokeText(remote.name, rx + TILE_SIZE_SCREEN / 2 - 10, ry - 6);
+                
+                ctx.fillStyle = '#fda4af';
+                ctx.fillText(remote.name, rx + TILE_SIZE_SCREEN / 2 - 10, ry - 6);
             }
         }
 
         if (player.worldZ === z) {
-            ctx.globalAlpha = 1.0;
             if (activeCharacterController.isLoaded && activeCharacterController.image) {
                 const rect = activeCharacterController.getSourceRect();
                 const sw = rect.sw;
                 const sh = rect.sh;
                 // Alinhamento Centro-Inferior (Bottom-Center)
-                const drawX = player.worldX - camera.x + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
-                const drawY = player.worldY - camera.y + (TILE_SIZE_SCREEN - sh) + rect.ay;
+                const rawX = player.worldX - camX + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
+                const rawY = player.worldY - camY + (TILE_SIZE_SCREEN - sh) + rect.ay;
+                const drawX = Math.round(rawX * zoom) / zoom;
+                const drawY = Math.round(rawY * zoom) / zoom;
                 
                 ctx.drawImage(
                     activeCharacterController.image,
-                    rect.sx, rect.sy, sw, sh,
+                    rect.sx, rect.sy, sw, sh - 0.5,
                     drawX, drawY,
                     sw, sh
                 );
             } else {
                 const knight = TILE_TYPES[6];
                 if (knight && knight.image && knight.image.complete) {
-                    ctx.drawImage(knight.image, player.worldX - camera.x, player.worldY - camera.y, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                    ctx.drawImage(knight.image, player.worldX - camX, player.worldY - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                 }
             }
             
-            // Desenha o nome do jogador acima dele
-            ctx.fillStyle = '#38bdf8';
-            ctx.font = 'bold 8px sans-serif';
+            // Desenha o nome do jogador acima dele (com borda preta retro estilo RPG/Tibia)
+            const pRect = activeCharacterController.getSourceRect();
+            const pSw = pRect.sw;
+            const pSh = pRect.sh;
+            const pRawX = player.worldX - camX + (TILE_SIZE_SCREEN - pSw) / 2 + pRect.ax;
+            const pRawY = player.worldY - camY + (TILE_SIZE_SCREEN - pSh) + pRect.ay;
+            const pDrawX = Math.round(pRawX * zoom) / zoom;
+            const pDrawY = Math.round(pRawY * zoom) / zoom;
+            const pNameX = pDrawX + pSw / 2 - 10;
+            const pNameY = pDrawY - 6;
+
+            ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
             ctx.textAlign = 'center';
-            ctx.fillText(activeCharacterController.config.name, player.worldX - camera.x + TILE_SIZE_SCREEN / 2, player.worldY - camera.y - 4);
+            
+            // Borda preta
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2.5;
+            ctx.strokeText(activeCharacterController.config.name, pNameX, pNameY);
+            
+            // Preenchimento azul claro
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillText(activeCharacterController.config.name, pNameX, pNameY);
         }
     });
+
+    ctx.restore();
 }
 
 function drawMinimap() {
@@ -1869,6 +2003,7 @@ function resize() {
     const container = document.getElementById('canvasContainer')!;
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
+    ctx.imageSmoothingEnabled = false;
 }
 
 function initMapEditorTabSwitching() {
@@ -1907,6 +2042,31 @@ function initMapEditorTabSwitching() {
 window.addEventListener('resize', resize);
 resize();
 initMapEditorTabSwitching();
+
+const gameZoomSelect = document.getElementById('gameZoomSelect') as HTMLSelectElement | null;
+if (gameZoomSelect) {
+    try {
+        const savedZoom = localStorage.getItem('game2d_camera_zoom');
+        if (savedZoom) {
+            camera.zoom = parseFloat(savedZoom) || 1.0;
+            gameZoomSelect.value = savedZoom;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+
+    gameZoomSelect.addEventListener('change', () => {
+        const val = parseFloat(gameZoomSelect.value);
+        if (!Number.isNaN(val) && val > 0) {
+            camera.zoom = val;
+            try {
+                localStorage.setItem('game2d_camera_zoom', val.toString());
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    });
+}
 
 // Oculta a tela de carregamento suavemente após todos os recursos (inclusive as imagens de tiles) carregarem completamente
 window.addEventListener('load', () => {

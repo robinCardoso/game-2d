@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>2D World Builder — GM Studio</title>
-    <script type="module" crossorigin src="/assets/studio-QWjqTUBj.js"></script>
+    <script type="module" crossorigin src="/assets/studio-D9nJLGg9.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/characterSerializer-CIuxBmr8.js">
     <link rel="modulepreload" crossorigin href="/assets/authGuard-DC4ROytj.js">
   </head>
@@ -94,9 +94,10 @@
           <div class="canvas-container" id="canvasContainer">
             <canvas id="gameCanvas"></canvas>
             <div class="hint">
-              <span class="accent">WASD</span> mover ·
+              <span class="accent">Espaço + Arrasto</span> (ou <span class="accent">Botão Meio</span>) mover mapa ·
+              <span class="accent">WASD</span> mover player ·
               <span class="accent">P/B/E</span> ferramentas ·
-              <span class="accent">Esc</span> fecha painel
+              <span class="accent">Esc</span> fechar painel
             </div>
           </div>
 
@@ -349,6 +350,7 @@
 
                   <label class="flyout-label">Imagem da Spritesheet (PNG)</label>
                   <button type="button" class="menu-dropdown-item block-btn" id="loadSpriteBtn" style="margin-bottom: 8px;">Carregar PNG</button>
+                  <button type="button" class="menu-dropdown-item block-btn" id="upscaleSpriteBtn" style="margin-bottom: 8px; border: 1px solid #eab308; color: #eab308; background: rgba(234, 179, 8, 0.05); text-align: center; display: none;">⚡ Upscale 3x (Pixel Art 32px ➔ 96px)</button>
                   <button type="button" class="menu-dropdown-item block-btn" id="openCalibratorBtn" style="margin-bottom: 8px; background: var(--accent-color); color: #fff; text-align: center;">🔍 Calibrar Grade</button>
                   <div class="info-row" style="margin-bottom: 8px;">
                     <span class="info-label">Orientação</span>
@@ -589,6 +591,18 @@
           <span class="status-chip"><span id="statusStepMs">320</span>ms</span>
           <span class="status-sep">|</span>
           <span class="status-chip" title="Mapa ativo" id="statusMapChip">🗺️ <span id="statusMapName">—</span></span>
+          <span class="status-sep">|</span>
+          <span class="status-chip" title="Zoom do Jogo">
+            🔍 Zoom: 
+            <select id="gameZoomSelect" style="background: transparent; border: none; color: #fff; font-family: inherit; font-size: 10px; cursor: pointer; outline: none; padding: 0 4px; font-weight: bold;">
+              <option value="0.5" style="background: #111; color: #fff;">50%</option>
+              <option value="0.75" style="background: #111; color: #fff;">75%</option>
+              <option value="1.0" selected style="background: #111; color: #fff;">100%</option>
+              <option value="1.5" style="background: #111; color: #fff;">150%</option>
+              <option value="2.0" style="background: #111; color: #fff;">200%</option>
+              <option value="3.0" style="background: #111; color: #fff;">300%</option>
+            </select>
+          </span>
           <span class="status-grow"></span>
           <span class="status-chip status-chip--dim" id="statusRole">GM</span>
         </footer>
