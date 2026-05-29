@@ -40,24 +40,33 @@ export function sanitizeMapSpriteCategory(raw: string): string {
         .replace(/[^a-zA-Z0-9_\-/]/g, '')
         .replace(/^\/+|\/+$/g, '');
 
-    // Remove prefixos redundantes de pasta como 'tiles/terrain/', 'terrain/', etc.
+    // Remove prefixos redundantes de pasta como 'tiles/maps/', 'maps/', etc.
     cleaned = cleaned
-        .replace(/^(tiles\/)?(terrain|items)\//i, '')
-        .replace(/^(tiles\/)?(terrain|items)$/i, '');
+        .replace(/^(tiles\/)?(maps|terrain|items)\//i, '')
+        .replace(/^(tiles\/)?(maps|terrain|items)$/i, '');
 
     return cleaned;
 }
 
 function isPseudoRootCategory(category: string): boolean {
     const c = category.trim().toLowerCase();
-    return c === '' || c === 'terrain' || c === 'items';
+    return c === '' || c === 'maps' || c === 'terrain' || c === 'items';
 }
 
 function collectCategoriesForAssetType(
     assetType: string,
-    sprites: Pick<MapSpriteListEntry, 'assetType' | 'category'>[]
+    sprites: Pick<MapSpriteListEntry, 'assetType' | 'category'>[],
+    folders: string[] = []
 ): string[] {
     const set = new Set<string>();
+    
+    // Adiciona todas as pastas descobertas no servidor
+    folders.forEach(f => {
+        if (!isPseudoRootCategory(f)) {
+            set.add(f);
+        }
+    });
+
     const hints = assetType === 'items' ? ITEM_CATEGORY_HINTS : TERRAIN_CATEGORY_HINTS;
     hints.forEach((h) => set.add(h));
 
@@ -138,13 +147,15 @@ export function initMapSpriteEditor() {
     let processedImage: HTMLImageElement | null = null;
     let isImageLoaded = false;
     let serverSpritesList: MapSpriteListEntry[] = [];
+    let serverFoldersList: string[] = [];
 
     function refreshCategoryDatalist(): void {
         if (!categoryDatalist) return;
         categoryDatalist.innerHTML = '';
         const categories = collectCategoriesForAssetType(
             assetTypeSelect.value,
-            serverSpritesList
+            serverSpritesList,
+            serverFoldersList
         );
         for (const cat of categories) {
             const opt = document.createElement('option');
@@ -165,6 +176,7 @@ export function initMapSpriteEditor() {
             }
             const result = await response.json();
             serverSpritesList = (result.sprites || []) as MapSpriteListEntry[];
+            serverFoldersList = (result.folders || []) as string[];
 
             refreshCategoryDatalist();
 
@@ -411,12 +423,54 @@ export function initMapSpriteEditor() {
             mockConfig,
             'idle',
             'down',
-            (result) => {
-                frameWidthInput.value = result.frameWidth.toString();
-                frameHeightInput.value = result.frameHeight.toString();
-                offsetXInput.value = result.offsetX.toString();
-                offsetYInput.value = result.offsetY.toString();
-                toast.success('Grade calibrada com sucesso!');
+            async (result: any) => {
+                const selCol = result.selectedFrameCol ?? 0;
+                const selRow = result.selectedFrameRow ?? 0;
+                const targetSize = 64; // Tamanho nativo da grade da engine (TILE_SIZE)
+
+                // Cria um canvas temporário para recortar e redimensionar o frame selecionado para 64x64
+                const cropCanvas = document.createElement('canvas');
+                cropCanvas.width = targetSize;
+                cropCanvas.height = targetSize;
+                const cropCtx = cropCanvas.getContext('2d');
+                if (cropCtx && processedImage) {
+                    const sx = result.offsetX + selCol * (result.frameWidth + result.gapX);
+                    const sy = result.offsetY + selRow * (result.frameHeight + result.gapY);
+                    
+                    // Desativa suavização para preservar a nitidez da Pixel Art ao reduzir
+                    cropCtx.imageSmoothingEnabled = false;
+
+                    cropCtx.drawImage(
+                        processedImage,
+                        sx, sy, result.frameWidth, result.frameHeight,
+                        0, 0, targetSize, targetSize
+                    );
+
+                    const croppedBase64 = cropCanvas.toDataURL('image/png');
+                    
+                    // Atualiza as imagens no editor
+                    originalImage = new Image();
+                    originalImage.src = croppedBase64;
+                    await new Promise((resolve) => {
+                        originalImage!.onload = resolve;
+                    });
+                    
+                    await applyChromaProcessing();
+
+                    // Reseta inputs de fatiamento para o frame único já recortado e redimensionado
+                    frameWidthInput.value = targetSize.toString();
+                    frameHeightInput.value = targetSize.toString();
+                    offsetXInput.value = '0';
+                    offsetYInput.value = '0';
+                    
+                    toast.success(`Recortado e redimensionado automaticamente para 64x64! (Col ${selCol + 1}, Linha ${selRow + 1})`);
+                } else {
+                    frameWidthInput.value = result.frameWidth.toString();
+                    frameHeightInput.value = result.frameHeight.toString();
+                    offsetXInput.value = result.offsetX.toString();
+                    offsetYInput.value = result.offsetY.toString();
+                    toast.success('Grade calibrada com sucesso!');
+                }
             },
             { mode: 'map', initialGridCols: 1, initialGridRows: 1 }
         );

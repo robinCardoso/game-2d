@@ -113,6 +113,7 @@ export default defineConfig({
           } else if (req.url === '/api/list-map-sprites' && req.method === 'GET') {
             try {
               const tilesDir = path.resolve(__dirname, 'tiles');
+              const mapsTilesDir = path.resolve(tilesDir, 'maps');
               
               const getPngFiles = (dir: string, filesList: string[] = []): string[] => {
                 if (!fs.existsSync(dir)) return filesList;
@@ -128,7 +129,23 @@ export default defineConfig({
                 return filesList;
               };
 
-              const allPngs = getPngFiles(tilesDir);
+              const allPngs = getPngFiles(mapsTilesDir);
+
+              const getSubdirectories = (dir: string, baseDir: string, foldersList: string[] = []): string[] => {
+                if (!fs.existsSync(dir)) return foldersList;
+                const files = fs.readdirSync(dir);
+                for (const file of files) {
+                  const name = path.join(dir, file);
+                  if (fs.statSync(name).isDirectory()) {
+                    const relative = path.relative(baseDir, name).replace(/\\/g, '/');
+                    foldersList.push(relative);
+                    getSubdirectories(name, baseDir, foldersList);
+                  }
+                }
+                return foldersList;
+              };
+
+              const folders = getSubdirectories(mapsTilesDir, mapsTilesDir);
 
               const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
               let properties: Record<string, any> = {};
@@ -137,22 +154,19 @@ export default defineConfig({
               }
 
               const mapSprites = allPngs
-                .filter(filePath => {
-                  // Pula a subpasta characters
-                  const relativeToTiles = path.relative(tilesDir, filePath).replace(/\\/g, '/');
-                  return !relativeToTiles.startsWith('characters/');
-                })
                 .map(filePath => {
                   const relativePath = path.relative(tilesDir, filePath).replace(/\\/g, '/');
                   const filename = path.basename(filePath, '.png');
                   
-                  // Identifica se é terreno ou item com base nas subpastas. Por padrão é terreno se não especificado.
-                  const parts = relativePath.split('/');
-                  const assetType = parts[0] === 'items' ? 'items' : 'terrain';
+                  const relativeToMaps = path.relative(mapsTilesDir, filePath).replace(/\\/g, '/');
+                  const parts = relativeToMaps.split('/');
                   
-                  // A categoria é a subpasta intermediária onde ele reside (ex: floors, nature, walls, etc.)
-                  const category = parts.length > 2 ? parts.slice(1, -1).join('/') : parts[0];
                   const props = properties[filename] || {};
+                  // Determina assetType baseado na propriedade ou heurística
+                  const assetType = props.assetType || (parts[0] === 'items' ? 'items' : 'terrain');
+                  
+                  // A categoria é a subpasta intermediária onde reside dentro de tiles/maps
+                  const category = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
                   
                   return {
                     name: props.nameOverride || filename.replace(/_/g, ' '),
@@ -166,7 +180,7 @@ export default defineConfig({
 
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ success: true, sprites: mapSprites }));
+              res.end(JSON.stringify({ success: true, sprites: mapSprites, folders }));
             } catch (err: any) {
               console.error('[Vite Backend] Erro ao listar sprites do mapa:', err);
               res.statusCode = 500;
@@ -196,7 +210,6 @@ export default defineConfig({
               try {
                 const { name, assetType, category, spriteBase64, properties } = JSON.parse(body);
                 const filename = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-                const baseDirName = assetType === 'items' ? 'items' : 'terrain';
                 
                 let subPath = '';
                 if (category) {
@@ -206,13 +219,13 @@ export default defineConfig({
                   
                   // Remove prefixos redundantes para evitar dupla-anestação no disco
                   sanitizedCategory = sanitizedCategory
-                    .replace(/^(tiles\/)?(terrain|items)\//i, '')
-                    .replace(/^(tiles\/)?(terrain|items)$/i, '');
+                    .replace(/^(tiles\/)?(maps|terrain|items)\//i, '')
+                    .replace(/^(tiles\/)?(maps|terrain|items)$/i, '');
 
                   subPath = sanitizedCategory;
                 }
 
-                const targetDir = path.resolve(__dirname, 'tiles', baseDirName, subPath);
+                const targetDir = path.resolve(__dirname, 'tiles/maps', subPath);
                 if (!fs.existsSync(targetDir)) {
                   fs.mkdirSync(targetDir, { recursive: true });
                 }
@@ -236,6 +249,7 @@ export default defineConfig({
                   isStair: properties.isStair ?? false,
                   stairDirection: properties.isStair ? 'up' : undefined,
                   nameOverride: name,
+                  assetType: assetType, // Salva o tipo do asset
                 };
                 if (properties.participatesInAutoBorder) {
                   entry.participatesInAutoBorder = true;

@@ -22,6 +22,8 @@ export interface CalibrationResult {
     currentState: string;
     currentDirection: string;
     sheetLayout: string;
+    selectedFrameCol?: number;
+    selectedFrameRow?: number;
 }
 
 export function openCharacterCalibrator(
@@ -252,6 +254,9 @@ export function openCharacterCalibrator(
 
     calZoomInput.addEventListener('input', updateZoom);
 
+    let selectedFrameCol = 0;
+    let selectedFrameRow = 0;
+
     // Desenha a grade
     function renderCalibrator() {
         if (!ctx) return;
@@ -282,6 +287,23 @@ export function openCharacterCalibrator(
                 if (r === 0 && c === 0) {
                     ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
                     ctx.fillRect(x + localFrameWidth / 2 - 2, y + localFrameHeight / 2 - 2, 4, 4);
+                }
+
+                // Destaque do frame selecionado em modo mapa
+                if (isMapMode && r === selectedFrameRow && c === selectedFrameCol) {
+                    ctx.strokeStyle = '#22c55e'; // Green border
+                    ctx.lineWidth = 3;
+                    ctx.strokeRect(x + 1, y + 1, localFrameWidth - 2, localFrameHeight - 2);
+                    ctx.fillStyle = 'rgba(34, 197, 94, 0.25)'; // Green tint
+                    ctx.fillRect(x + 2, y + 2, localFrameWidth - 4, localFrameHeight - 4);
+                    
+                    ctx.fillStyle = '#22c55e';
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.fillText('SELECIONADO', x + 6, y + 18);
+                    
+                    // Restaura estilos
+                    ctx.strokeStyle = 'rgba(255, 60, 60, 0.7)';
+                    ctx.lineWidth = 1;
                 }
 
                 // Destaque da animação ativa
@@ -348,54 +370,69 @@ export function openCharacterCalibrator(
 
     // Clique e Arraste (Drag-to-Align) com suporte dinâmico a Zoom!
     let isDragging = false;
+    let hasDragged = false;
     let dragStartX = 0;
     let dragStartY = 0;
     let originalOffsetX = 0;
     let originalOffsetY = 0;
 
     canvas.addEventListener('mousedown', (e) => {
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const clickX = Math.round((e.clientX - rect.left) * scaleX);
-        const clickY = Math.round((e.clientY - rect.top) * scaleY);
-
         isDragging = true;
-        dragStartX = clickX;
-        dragStartY = clickY;
+        hasDragged = false;
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
         originalOffsetX = localOffsetX;
         originalOffsetY = localOffsetY;
-
-        localOffsetX = clickX;
-        localOffsetY = clickY;
-
-        calOffsetXInput.value = localOffsetX.toString();
-        calOffsetYInput.value = localOffsetY.toString();
-        renderCalibrator();
     });
 
     window.addEventListener('mousemove', (e) => {
         if (!isDragging) return;
 
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        const currentX = Math.round((e.clientX - rect.left) * scaleX);
-        const currentY = Math.round((e.clientY - rect.top) * scaleY);
+        const dx = e.clientX - dragStartX;
+        const dy = e.clientY - dragStartY;
 
-        const dx = currentX - dragStartX;
-        const dy = currentY - dragStartY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            hasDragged = true;
+        }
 
-        localOffsetX = originalOffsetX + dx;
-        localOffsetY = originalOffsetY + dy;
+        if (hasDragged) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            localOffsetX = Math.round(originalOffsetX + dx * scaleX);
+            localOffsetY = Math.round(originalOffsetY + dy * scaleY);
 
-        calOffsetXInput.value = localOffsetX.toString();
-        calOffsetYInput.value = localOffsetY.toString();
-        renderCalibrator();
+            calOffsetXInput.value = localOffsetX.toString();
+            calOffsetYInput.value = localOffsetY.toString();
+            renderCalibrator();
+        }
     });
 
-    window.addEventListener('mouseup', () => {
-        isDragging = false;
+    window.addEventListener('mouseup', (e) => {
+        if (isDragging) {
+            isDragging = false;
+            if (!hasDragged) {
+                // Foi apenas um clique! Seleciona o frame correspondente
+                const rect = canvas.getBoundingClientRect();
+                const scaleX = canvas.width / rect.width;
+                const scaleY = canvas.height / rect.height;
+                const clickX = Math.round((e.clientX - rect.left) * scaleX);
+                const clickY = Math.round((e.clientY - rect.top) * scaleY);
+
+                const col = Math.floor((clickX - localOffsetX) / (localFrameWidth + localGapX));
+                const row = Math.floor((clickY - localOffsetY) / (localFrameHeight + localGapY));
+
+                const cols = Math.floor((canvas.width - localOffsetX) / (localFrameWidth + localGapX));
+                const rows = Math.floor((canvas.height - localOffsetY) / (localFrameHeight + localGapY));
+
+                if (col >= 0 && col < cols && row >= 0 && row < rows) {
+                    selectedFrameCol = col;
+                    selectedFrameRow = row;
+                    renderCalibrator();
+                    toast.info(`Selecionado frame: Col ${col + 1}, Linha ${row + 1}`);
+                }
+            }
+        }
     });
 
     // Inputs globais atualizam em tempo real
@@ -497,7 +534,9 @@ export function openCharacterCalibrator(
             animations: localAnimations,
             currentState: activeState,
             currentDirection: activeDirection,
-            sheetLayout: localSheetLayout
+            sheetLayout: localSheetLayout,
+            selectedFrameCol: selectedFrameCol,
+            selectedFrameRow: selectedFrameRow
         });
         closeModal();
     });
