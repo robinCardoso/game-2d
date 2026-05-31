@@ -94,8 +94,13 @@ export function attachVariantBrushes(
     const builtIndex = index ?? buildVariantGroupIndex(registry);
     resetVariantState();
 
-    for (const [groupKey, memberIds] of builtIndex) {
-        if (memberIds.length < 2) continue;
+    const sortedGroups = [...builtIndex.keys()].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+    );
+
+    for (const groupKey of sortedGroups) {
+        const memberIds = builtIndex.get(groupKey);
+        if (!memberIds || memberIds.length < 2) continue;
 
         groupMembers.set(groupKey, [...memberIds]);
         for (const id of memberIds) {
@@ -189,6 +194,10 @@ function pickWeighted(memberIds: number[], registry: TileRegistry, groupKey: str
     return entries[entries.length - 1].id;
 }
 
+/**
+ * Sorteia um membro do grupo ao **pintar** com o pincel 🎲 aleatório.
+ * Não é usado na renderização — o mapa salvo guarda ids fixos por célula.
+ */
 export function resolvePaintTileId(
     selectedId: number,
     registry: TileRegistry,

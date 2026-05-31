@@ -25,14 +25,17 @@ export interface LoadedMapResult {
  * Carrega um mapa pelo seu MapEntry, fazendo fetch do arquivo JSON.
  * Lança erro se o arquivo não puder ser carregado ou se o JSON for inválido.
  */
-export async function loadMapFile(entry: MapEntry): Promise<LoadedMapResult> {
+export async function loadMapFile(
+    entry: MapEntry,
+    tileRegistry?: import('./types').TileRegistry
+): Promise<LoadedMapResult> {
     const url = `/${entry.file}`;
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`[WorldLoader] Falha ao carregar o mapa "${entry.id}" em "${url}": HTTP ${response.status}`);
     }
     const raw: unknown = await response.json();
-    const loaded = loadMapFromJson(raw, { x: 50, y: 50, z: 0 });
+    const loaded = loadMapFromJson(raw, { x: 50, y: 50, z: 0 }, tileRegistry);
     return {
         ...loaded,
         size: loaded.size,
@@ -43,8 +46,11 @@ export async function loadMapFile(entry: MapEntry): Promise<LoadedMapResult> {
  * Carrega um mapa diretamente de um objeto JSON (ex: ao importar via File Input).
  * Equivalente ao `loadMapFile`, mas sem fetch.
  */
-export function loadMapFromObject(raw: unknown): LoadedMapResult {
-    const loaded = loadMapFromJson(raw, { x: 50, y: 50, z: 0 });
+export function loadMapFromObject(
+    raw: unknown,
+    tileRegistry?: import('./types').TileRegistry
+): LoadedMapResult {
+    const loaded = loadMapFromJson(raw, { x: 50, y: 50, z: 0 }, tileRegistry);
     return {
         ...loaded,
         size: loaded.size,

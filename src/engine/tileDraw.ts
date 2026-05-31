@@ -13,9 +13,9 @@ export function drawRegistryTile(
 
     const sr = tile.sourceRect;
     if (sr) {
-        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, dx, dy, size, size);
+        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, Math.round(dx), Math.round(dy), size, size);
     } else {
-        ctx.drawImage(img, dx, dy, size, size);
+        ctx.drawImage(img, Math.round(dx), Math.round(dy), size, size);
     }
 }
 

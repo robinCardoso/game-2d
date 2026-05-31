@@ -208,6 +208,71 @@ function registerSingleTile(
     };
 }
 
+function loadImageElement(url: string): Promise<HTMLImageElement> {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(img);
+        img.src = url;
+    });
+}
+
+function shouldSkipTilePath(path: string, fileName: string): boolean {
+    const sizeSuffix = tileAssetSizeSuffix();
+    if (
+        (!fileName.endsWith(sizeSuffix) && path.includes('stone_stairs_up')) ||
+        (!fileName.endsWith(sizeSuffix) && path.includes('wood_stairs_up')) ||
+        (!fileName.endsWith(sizeSuffix) && path.includes('marble_stairs_up'))
+    ) {
+        return true;
+    }
+    const custom = getCustomProperties(
+        fileName,
+        normalizeTileFileName(fileName)
+    );
+    return (custom as { assetType?: string } | undefined)?.assetType === 'character';
+}
+
+function registerLoadedTile(
+    registry: TileRegistry,
+    ids: NextIdAllocator,
+    path: string,
+    img: HTMLImageElement
+): void {
+    const parts = path.split('/');
+    const fileName = parts.pop()!.replace('.png', '');
+    const category = parts.pop()!;
+    const baseName = normalizeTileFileName(fileName);
+
+    const props = getTileProperties(fileName);
+    const custom = getCustomProperties(fileName, baseName);
+    const paletteCategory = resolvePaletteCategory(path, category);
+
+    const stripFrames = inferVariantStripFrameCount(img, custom, fileName);
+    if (stripFrames > 1) {
+        registerVariantStrip(registry, ids, {
+            fileName,
+            img,
+            category,
+            paletteCategory,
+            props,
+            custom,
+            stripFrames,
+        });
+        return;
+    }
+
+    registerSingleTile(registry, ids, {
+        fileName,
+        baseName,
+        img,
+        category,
+        paletteCategory,
+        props,
+        custom,
+    });
+}
+
 function registerTileFromPath(
     registry: TileRegistry,
     ids: NextIdAllocator,
@@ -216,69 +281,13 @@ function registerTileFromPath(
 ): Promise<void> {
     const parts = path.split('/');
     const fileName = parts.pop()!.replace('.png', '');
-    const category = parts.pop()!;
-    const baseName = normalizeTileFileName(fileName);
-    const sizeSuffix = tileAssetSizeSuffix();
 
-    if (
-        (!fileName.endsWith(sizeSuffix) && path.includes('stone_stairs_up')) ||
-        (!fileName.endsWith(sizeSuffix) && path.includes('wood_stairs_up')) ||
-        (!fileName.endsWith(sizeSuffix) && path.includes('marble_stairs_up'))
-    ) {
+    if (shouldSkipTilePath(path, fileName)) {
         return Promise.resolve();
     }
 
-    const props = getTileProperties(fileName);
-    const custom = getCustomProperties(fileName, baseName);
-
-    if ((custom as { assetType?: string } | undefined)?.assetType === 'character') {
-        return Promise.resolve();
-    }
-
-    const paletteCategory = resolvePaletteCategory(path, category);
-    const img = new Image();
-    img.src = url;
-
-    const finish = (): void => {
-        const stripFrames = inferVariantStripFrameCount(img, custom, fileName);
-        if (stripFrames > 1) {
-            registerVariantStrip(registry, ids, {
-                fileName,
-                img,
-                category,
-                paletteCategory,
-                props,
-                custom,
-                stripFrames,
-            });
-            return;
-        }
-
-        registerSingleTile(registry, ids, {
-            fileName,
-            baseName,
-            img,
-            category,
-            paletteCategory,
-            props,
-            custom,
-        });
-    };
-
-    if (img.complete && img.naturalWidth > 0) {
-        finish();
-        return Promise.resolve();
-    }
-
-    return new Promise((resolve) => {
-        img.onload = () => {
-            finish();
-            resolve();
-        };
-        img.onerror = () => {
-            finish();
-            resolve();
-        };
+    return loadImageElement(url).then((img) => {
+        registerLoadedTile(registry, ids, path, img);
     });
 }
 
@@ -309,14 +318,23 @@ export async function buildTileRegistryAsync(): Promise<TileRegistry> {
     const registry = createEmptyRegistry();
     const ids = createNextIdAllocator(7);
     const tileImagesRaw = getTileImageGlob();
-    const waits: Promise<void>[] = [];
+    const paths = Object.keys(tileImagesRaw)
+        .filter((path) => !isCharacterTilePath(path))
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-    for (const path of Object.keys(tileImagesRaw)) {
-        if (isCharacterTilePath(path)) continue;
-        waits.push(registerTileFromPath(registry, ids, path, tileImagesRaw[path]));
+    const imageByPath = new Map<string, HTMLImageElement>();
+    await Promise.all(
+        paths.map(async (path) => {
+            imageByPath.set(path, await loadImageElement(tileImagesRaw[path]));
+        })
+    );
+
+    for (const path of paths) {
+        const img = imageByPath.get(path);
+        if (!img) continue;
+        registerLoadedTile(registry, ids, path, img);
     }
 
-    await Promise.all(waits);
     return registry;
 }
 
@@ -327,9 +345,11 @@ export function buildTileRegistry(): TileRegistry {
     const registry = createEmptyRegistry();
     const ids = createNextIdAllocator(7);
     const tileImagesRaw = getTileImageGlob();
+    const paths = Object.keys(tileImagesRaw)
+        .filter((path) => !isCharacterTilePath(path))
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
-    for (const path of Object.keys(tileImagesRaw)) {
-        if (isCharacterTilePath(path)) continue;
+    for (const path of paths) {
         void registerTileFromPath(registry, ids, path, tileImagesRaw[path]);
     }
 

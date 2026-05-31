@@ -96,6 +96,9 @@ export function openCharacterCalibrator(
 
     if (!modal || !canvas || !ctx) return;
 
+    const abortController = new AbortController();
+    const { signal } = abortController;
+
     const imageW = imageElement.naturalWidth || imageElement.width;
     const imageH = imageElement.naturalHeight || imageElement.height;
     const isMapMode = options?.mode === 'map';
@@ -291,6 +294,44 @@ export function openCharacterCalibrator(
     let syncingMapFrameUI = false;
     let mapMultiSelectMode = false;
     const selectedFramesList: Array<{ col: number; row: number }> = [];
+
+    if (calMapMultiSelectToggle) calMapMultiSelectToggle.checked = false;
+    selectedFramesList.length = 0;
+    updateMultiSelectUI();
+
+    function pickFrameAtClientPoint(clientX: number, clientY: number): { col: number; row: number } | null {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width <= 0 || rect.height <= 0) return null;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const clickX = Math.round((clientX - rect.left) * scaleX);
+        const clickY = Math.round((clientY - rect.top) * scaleY);
+
+        const col = Math.floor((clickX - localOffsetX) / (localFrameWidth + localGapX));
+        const row = Math.floor((clickY - localOffsetY) / (localFrameHeight + localGapY));
+
+        const cols = Math.floor((canvas.width - localOffsetX) / (localFrameWidth + localGapX));
+        const rows = Math.floor((canvas.height - localOffsetY) / (localFrameHeight + localGapY));
+
+        if (col >= 0 && col < cols && row >= 0 && row < rows) {
+            return { col, row };
+        }
+        return null;
+    }
+
+    function applyFramePick(col: number, row: number): void {
+        selectedFrameCol = col;
+        selectedFrameRow = row;
+
+        if (isMapMode && mapMultiSelectMode) {
+            toggleFrameInSelection(col, row);
+            updateMultiSelectUI();
+        } else if (isMapMode) {
+            toast.info(`Frame selecionado: col ${col + 1}, linha ${row + 1}`);
+        }
+
+        renderCalibrator();
+    }
 
     function findSelectedFrameIndex(col: number, row: number): number {
         return selectedFramesList.findIndex((f) => f.col === col && f.row === row);
@@ -535,7 +576,18 @@ export function openCharacterCalibrator(
         }
     }
 
-    // Clique e Arraste (Drag-to-Align) com suporte dinâmico a Zoom!
+    // Clique no canvas — seleção de frames (modo mapa; multi-select não usa arraste)
+    canvas.addEventListener(
+        'click',
+        (e) => {
+            if (!isMapMode) return;
+            const picked = pickFrameAtClientPoint(e.clientX, e.clientY);
+            if (picked) applyFramePick(picked.col, picked.row);
+        },
+        { signal }
+    );
+
+    // Arraste para alinhar margem (desativado durante seleção múltipla no modo mapa)
     let isDragging = false;
     let hasDragged = false;
     let dragStartX = 0;
@@ -543,71 +595,59 @@ export function openCharacterCalibrator(
     let originalOffsetX = 0;
     let originalOffsetY = 0;
 
-    canvas.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        hasDragged = false;
-        dragStartX = e.clientX;
-        dragStartY = e.clientY;
-        originalOffsetX = localOffsetX;
-        originalOffsetY = localOffsetY;
-    });
+    canvas.addEventListener(
+        'mousedown',
+        (e) => {
+            if (isMapMode && mapMultiSelectMode) return;
+            isDragging = true;
+            hasDragged = false;
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+            originalOffsetX = localOffsetX;
+            originalOffsetY = localOffsetY;
+        },
+        { signal }
+    );
 
-    window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
+    window.addEventListener(
+        'mousemove',
+        (e) => {
+            if (!isDragging) return;
 
-        const dx = e.clientX - dragStartX;
-        const dy = e.clientY - dragStartY;
+            const dx = e.clientX - dragStartX;
+            const dy = e.clientY - dragStartY;
 
-        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-            hasDragged = true;
-        }
+            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                hasDragged = true;
+            }
 
-        if (hasDragged) {
-            const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            localOffsetX = Math.round(originalOffsetX + dx * scaleX);
-            localOffsetY = Math.round(originalOffsetY + dy * scaleY);
-
-            calOffsetXInput.value = localOffsetX.toString();
-            calOffsetYInput.value = localOffsetY.toString();
-            renderCalibrator();
-        }
-    });
-
-    window.addEventListener('mouseup', (e) => {
-        if (isDragging) {
-            isDragging = false;
-            if (!hasDragged) {
-                // Foi apenas um clique! Seleciona o frame correspondente
+            if (hasDragged) {
                 const rect = canvas.getBoundingClientRect();
                 const scaleX = canvas.width / rect.width;
                 const scaleY = canvas.height / rect.height;
-                const clickX = Math.round((e.clientX - rect.left) * scaleX);
-                const clickY = Math.round((e.clientY - rect.top) * scaleY);
+                localOffsetX = Math.round(originalOffsetX + dx * scaleX);
+                localOffsetY = Math.round(originalOffsetY + dy * scaleY);
 
-                const col = Math.floor((clickX - localOffsetX) / (localFrameWidth + localGapX));
-                const row = Math.floor((clickY - localOffsetY) / (localFrameHeight + localGapY));
-
-                const cols = Math.floor((canvas.width - localOffsetX) / (localFrameWidth + localGapX));
-                const rows = Math.floor((canvas.height - localOffsetY) / (localFrameHeight + localGapY));
-
-                if (col >= 0 && col < cols && row >= 0 && row < rows) {
-                    selectedFrameCol = col;
-                    selectedFrameRow = row;
-
-                    if (isMapMode && mapMultiSelectMode) {
-                        toggleFrameInSelection(col, row);
-                        updateMultiSelectUI();
-                    } else if (isMapMode) {
-                        toast.info(`Frame selecionado: col ${col + 1}, linha ${row + 1}`);
-                    }
-
-                    renderCalibrator();
-                }
+                calOffsetXInput.value = localOffsetX.toString();
+                calOffsetYInput.value = localOffsetY.toString();
+                renderCalibrator();
             }
-        }
-    });
+        },
+        { signal }
+    );
+
+    window.addEventListener(
+        'mouseup',
+        (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            if (!hasDragged && !isMapMode) {
+                const picked = pickFrameAtClientPoint(e.clientX, e.clientY);
+                if (picked) applyFramePick(picked.col, picked.row);
+            }
+        },
+        { signal }
+    );
 
     // Inputs globais atualizam em tempo real
     const gridInputs = [
@@ -723,6 +763,7 @@ export function openCharacterCalibrator(
     });
 
     function closeModal() {
+        abortController.abort();
         modal?.classList.remove('is-open');
     }
 
@@ -798,8 +839,25 @@ export function openCharacterCalibrator(
     });
 
     // Inicialização do Modal
-    if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {
+    if (isMapMode && (localGridCols > 1 || localGridRows > 1)) {
         applyGridDivision(localGridCols, localGridRows, false);
+    } else if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {
+        applyGridDivision(localGridCols, localGridRows, false);
+    } else if (isMapMode) {
+        const computedCols = Math.max(
+            1,
+            Math.floor((imageW - localOffsetX) / (localFrameWidth + localGapX))
+        );
+        const computedRows = Math.max(
+            1,
+            Math.floor((imageH - localOffsetY) / (localFrameHeight + localGapY))
+        );
+        if (computedCols > 1 || computedRows > 1) {
+            localGridCols = computedCols;
+            localGridRows = computedRows;
+            syncGridInputsToLocal();
+        }
+        previewDivisionFromUI();
     } else {
         previewDivisionFromUI();
     }

@@ -20,6 +20,7 @@ import {
     MAP_FORMAT_ID,
     MAP_SCHEMA_PATH,
 } from './tileCatalog';
+import { remapWorldMapTileIds, resolveTilesByFloor } from './tileRefResolver';
 import type { MapDocument, MapTileEntry, SparseTileEntry, SpawnPoint, TileRegistry, WorldMap } from './types';
 
 const { MAP_SIZE, MIN_FLOOR_Z, MAX_FLOOR_Z, EMPTY_TILE_ID } = ENGINE_CONFIG;
@@ -176,32 +177,44 @@ export function serializeMapDocument(
     return doc;
 }
 
-export function deserializeMapDocument(doc: MapDocument): WorldMap {
+export function deserializeMapDocument(
+    doc: MapDocument,
+    tileRegistry?: TileRegistry
+): WorldMap {
     if (doc.version !== 1) {
         throw new Error(`Versão de mapa não suportada: ${doc.version}`);
     }
 
+    let map: WorldMap;
+
     if (doc.tiles && typeof doc.tiles === 'object') {
-        const tiles = sanitizeTilesByFloor(doc.tiles, doc.size);
+        let tiles = sanitizeTilesByFloor(doc.tiles, doc.size);
         if (Object.keys(tiles).length > 0) {
-            return sparseTilesToWorldMap(tilesByFloorToSparseEntries(tiles), doc.size);
+            if (tileRegistry) {
+                tiles = resolveTilesByFloor(tiles, doc.tileRefs, tileRegistry);
+            }
+            map = sparseTilesToWorldMap(tilesByFloorToSparseEntries(tiles), doc.size);
+        } else {
+            map = createEmptyWorldMap(doc.size);
         }
-    }
-
-    if (Array.isArray(doc.sparseTiles)) {
+    } else if (Array.isArray(doc.sparseTiles)) {
         const tiles = sanitizeSparseTiles(doc.sparseTiles, doc.size);
-        return sparseTilesToWorldMap(tiles, doc.size);
+        map = sparseTilesToWorldMap(tiles, doc.size);
+    } else if (!doc.floors) {
+        map = createEmptyWorldMap(doc.size);
+    } else {
+        map = {};
+        for (const [zKey, grid] of Object.entries(doc.floors)) {
+            map[Number(zKey)] = grid;
+        }
+        map = ensureAllFloors(map, doc.size);
     }
 
-    if (!doc.floors) {
-        return createEmptyWorldMap(doc.size);
+    if (tileRegistry && doc.tileRefs && Object.keys(doc.tileRefs).length > 0) {
+        map = remapWorldMapTileIds(map, doc, tileRegistry);
     }
 
-    const map: WorldMap = {};
-    for (const [zKey, grid] of Object.entries(doc.floors)) {
-        map[Number(zKey)] = grid;
-    }
-    return ensureAllFloors(map, doc.size);
+    return map;
 }
 
 /**
@@ -225,7 +238,8 @@ export function ensureAllFloors(
 /** Aceita JSON legado (só floors) ou MapDocument v1. */
 export function loadMapFromJson(
     raw: unknown,
-    fallbackSpawn?: SpawnPoint
+    fallbackSpawn?: SpawnPoint,
+    tileRegistry?: TileRegistry
 ): { worldMap: WorldMap; spawn: SpawnPoint; name: string; mapId?: string; size: number; metadata: Record<string, import('./types').TileMetadata>; houses: Record<number, import('./types').HouseData>; spawns: import('./types').CreatureSpawn[]; portals: import('./types').PortalData[] } {
     if (!raw || typeof raw !== 'object') {
         throw new Error('JSON de mapa inválido');
@@ -248,7 +262,7 @@ export function loadMapFromJson(
             );
         }
 
-        const worldMap = deserializeMapDocument(docForParse);
+        const worldMap = deserializeMapDocument(docForParse, tileRegistry);
         repairWorldMapGrids(worldMap, mapSize);
 
         return {

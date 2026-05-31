@@ -7,6 +7,12 @@ import {
 } from './mapSpriteBatchExport';
 import { renderFolderTree } from './folderTree';
 import { ENGINE_CONFIG } from '../engine/config';
+import {
+    calibrationHintsFromProperties,
+    calibrationToPropertyPayload,
+    inferMapSpriteCalibration,
+    type MapSpriteCalibration,
+} from './mapSpriteCalibration';
 
 let afterSaveSpriteHandler: (() => void | Promise<void>) | undefined;
 
@@ -22,6 +28,15 @@ interface MapSpriteListEntry {
         isStair?: boolean;
         variantGroup?: string;
         variantStripFrames?: number;
+        frameWidth?: number;
+        frameHeight?: number;
+        offsetX?: number;
+        offsetY?: number;
+        gapX?: number;
+        gapY?: number;
+        gridCols?: number;
+        gridRows?: number;
+        sheetLayout?: string;
     };
 }
 
@@ -121,6 +136,7 @@ export function initMapSpriteEditor() {
     // Carregamento de sprites existentes
     const serverSelect = document.getElementById('mapSpriteServerSelect') as HTMLSelectElement | null;
     const refreshListBtn = document.getElementById('mapSpriteRefreshListBtn');
+    const newSpriteBtn = document.getElementById('mapSpriteNewBtn');
 
     // Canvas Preview
     const previewCanvas = document.getElementById('mapSpritePreviewCanvas') as HTMLCanvasElement;
@@ -140,6 +156,102 @@ export function initMapSpriteEditor() {
     let isImageLoaded = false;
     let serverSpritesList: MapSpriteListEntry[] = [];
     let serverFoldersList: string[] = [];
+    let currentCalibration: MapSpriteCalibration | null = null;
+    let loadedSpriteProperties: MapSpriteListEntry['properties'] | undefined;
+
+    const DEFAULT_SPRITE_NAME = '';
+
+    function applyCalibrationToForm(cal: MapSpriteCalibration): void {
+        frameWidthInput.value = String(cal.frameWidth);
+        frameHeightInput.value = String(cal.frameHeight);
+        offsetXInput.value = String(cal.offsetX);
+        offsetYInput.value = String(cal.offsetY);
+        currentCalibration = cal;
+    }
+
+    function syncCalibrationFromImage(
+        properties?: MapSpriteListEntry['properties']
+    ): void {
+        if (!originalImage) {
+            currentCalibration = null;
+            return;
+        }
+        const w = originalImage.naturalWidth || originalImage.width;
+        const h = originalImage.naturalHeight || originalImage.height;
+        const hints = calibrationHintsFromProperties(properties as Record<string, unknown> | undefined);
+        currentCalibration = inferMapSpriteCalibration(w, h, hints);
+        applyCalibrationToForm(currentCalibration);
+    }
+
+    function readCalibrationFromForm(): MapSpriteCalibration | null {
+        if (!processedImage) return currentCalibration;
+        const w = processedImage.naturalWidth || processedImage.width;
+        const h = processedImage.naturalHeight || processedImage.height;
+        const fw = parseInt(frameWidthInput.value, 10);
+        const fh = parseInt(frameHeightInput.value, 10);
+        if (!Number.isFinite(fw) || fw <= 0 || !Number.isFinite(fh) || fh <= 0) {
+            return inferMapSpriteCalibration(
+                w,
+                h,
+                calibrationHintsFromProperties(loadedSpriteProperties as Record<string, unknown> | undefined)
+            );
+        }
+        const ox = parseInt(offsetXInput.value, 10) || 0;
+        const oy = parseInt(offsetYInput.value, 10) || 0;
+        const gapX = currentCalibration?.gapX ?? 0;
+        const gapY = currentCalibration?.gapY ?? 0;
+        const gridCols = Math.max(1, Math.floor((w - ox) / (fw + gapX)));
+        const gridRows = Math.max(1, Math.floor((h - oy) / (fh + gapY)));
+        return {
+            frameWidth: fw,
+            frameHeight: fh,
+            offsetX: ox,
+            offsetY: oy,
+            gapX,
+            gapY,
+            gridCols,
+            gridRows,
+            sheetLayout: currentCalibration?.sheetLayout ?? 'horizontal',
+        };
+    }
+
+    /** Zera imagem e campos para criar um sprite do zero (sem sobrescrever existente). */
+    function resetToNewSprite(options?: { silent?: boolean }): void {
+        originalImage = null;
+        processedImage = null;
+        isImageLoaded = false;
+
+        if (serverSelect) serverSelect.value = '';
+        if (importInput) importInput.value = '';
+
+        nameInput.value = DEFAULT_SPRITE_NAME;
+        assetTypeSelect.value = 'terrain';
+        categoryInput.value = '';
+        walkableToggle.checked = true;
+        speedRange.value = '1.0';
+        if (speedValSpan) speedValSpan.innerText = '1.0';
+        stairToggle.checked = false;
+        if (variantGroupInput && variantGroupExclude) {
+            variantGroupInput.value = '';
+            variantGroupExclude.checked = false;
+            variantGroupInput.disabled = false;
+        }
+        chromaKeyToggle.checked = false;
+        if (chromaKeyToleranceRow) chromaKeyToleranceRow.style.display = 'none';
+        chromaKeyTolerance.value = '50';
+        if (chromaKeyToleranceVal) chromaKeyToleranceVal.innerText = '50';
+        frameWidthInput.value = String(ENGINE_CONFIG.TILE_SIZE);
+        frameHeightInput.value = String(ENGINE_CONFIG.TILE_SIZE);
+        offsetXInput.value = '0';
+        offsetYInput.value = '0';
+        currentCalibration = null;
+        loadedSpriteProperties = undefined;
+
+        syncTerrainPropertiesVisibility();
+        if (!options?.silent) {
+            toast.info('Formulário limpo — carregue um PNG para a nova sprite.');
+        }
+    }
 
     function refreshVariantGroupDatalist(): void {
         if (!variantGroupDatalist) return;
@@ -269,6 +381,10 @@ export function initMapSpriteEditor() {
         if (ok) toast.success('Lista de sprites e subpastas atualizada.');
     });
 
+    newSpriteBtn?.addEventListener('click', () => {
+        resetToNewSprite();
+    });
+
     void reloadServerMapSpritesList();
 
     categoryTreeEl?.addEventListener('click', (e) => {
@@ -277,10 +393,13 @@ export function initMapSpriteEditor() {
         categoryInput.value = el.dataset.folderPath;
     });
 
-    // Evento de seleção de sprite existente
+    // Evento de seleção de sprite existente (vazio = nova sprite)
     serverSelect?.addEventListener('change', () => {
         const val = serverSelect.value;
-        if (!val) return;
+        if (!val) {
+            resetToNewSprite({ silent: true });
+            return;
+        }
 
         const sprite = serverSpritesList.find(s => s.relativePath === val);
         if (!sprite) return;
@@ -294,6 +413,8 @@ export function initMapSpriteEditor() {
             sprite.category === 'terrain' || sprite.category === 'items'
                 ? ''
                 : sprite.category ?? '';
+
+        loadedSpriteProperties = sprite.properties;
 
         if (sprite.assetType === 'terrain' && sprite.properties) {
             walkableToggle.checked = sprite.properties.walkable ?? true;
@@ -311,6 +432,7 @@ export function initMapSpriteEditor() {
         originalImage.src = '/' + sprite.relativePath; // Aponta para a pasta física do projeto servido pelo Vite
         originalImage.onload = async () => {
             await applyChromaProcessing();
+            syncCalibrationFromImage(sprite.properties);
             toast.success(`Sprite "${sprite.name}" carregado com sucesso para edição!`);
         };
         originalImage.onerror = () => {
@@ -392,7 +514,9 @@ export function initMapSpriteEditor() {
             originalImage = new Image();
             originalImage.src = reader.result as string;
             originalImage.onload = async () => {
+                loadedSpriteProperties = undefined;
                 await applyChromaProcessing();
+                syncCalibrationFromImage();
                 toast.success('Imagem da spritesheet carregada com sucesso!');
             };
         };
@@ -408,28 +532,30 @@ export function initMapSpriteEditor() {
 
         const imgW = processedImage.naturalWidth || processedImage.width;
         const imgH = processedImage.naturalHeight || processedImage.height;
-        let fw = parseInt(frameWidthInput.value, 10) || 0;
-        let fh = parseInt(frameHeightInput.value, 10) || 0;
-        if (fw <= 0 || fh <= 0) {
-            fw = imgW;
-            fh = imgH;
-        }
+        const calibration =
+            readCalibrationFromForm() ??
+            inferMapSpriteCalibration(
+                imgW,
+                imgH,
+                calibrationHintsFromProperties(loadedSpriteProperties as Record<string, unknown> | undefined)
+            );
 
         const mockConfig = {
             name: nameInput.value,
             spriteSheetUrl: processedImage.src,
-            frameWidth: fw,
-            frameHeight: fh,
+            frameWidth: calibration.frameWidth,
+            frameHeight: calibration.frameHeight,
             defaultDirection: 'down' as const,
             animations: {
                 'idle_down': { row: 0, startFrame: 0, frames: 1, speedFps: 5, loop: true }
             },
-            offsetX: parseInt(offsetXInput.value, 10) || 0,
-            offsetY: parseInt(offsetYInput.value, 10) || 0,
-            gapX: 0,
-            gapY: 0,
+            offsetX: calibration.offsetX,
+            offsetY: calibration.offsetY,
+            gapX: calibration.gapX,
+            gapY: calibration.gapY,
             anchorX: 0,
-            anchorY: 0
+            anchorY: 0,
+            sheetLayout: calibration.sheetLayout,
         };
 
         openCharacterCalibrator(
@@ -476,6 +602,17 @@ export function initMapSpriteEditor() {
                     frameHeightInput.value = targetSize.toString();
                     offsetXInput.value = '0';
                     offsetYInput.value = '0';
+                    currentCalibration = {
+                        frameWidth: targetSize,
+                        frameHeight: targetSize,
+                        offsetX: 0,
+                        offsetY: 0,
+                        gapX: 0,
+                        gapY: 0,
+                        gridCols: 1,
+                        gridRows: 1,
+                        sheetLayout: 'horizontal',
+                    };
                     
                     toast.success(`Recortado para ${targetSize}×${targetSize} px! (Col ${selCol + 1}, Linha ${selRow + 1})`);
                 } else {
@@ -483,13 +620,32 @@ export function initMapSpriteEditor() {
                     frameHeightInput.value = result.frameHeight.toString();
                     offsetXInput.value = result.offsetX.toString();
                     offsetYInput.value = result.offsetY.toString();
+                    const cols = Math.max(
+                        1,
+                        Math.floor((imgW - result.offsetX) / (result.frameWidth + result.gapX))
+                    );
+                    const rows = Math.max(
+                        1,
+                        Math.floor((imgH - result.offsetY) / (result.frameHeight + result.gapY))
+                    );
+                    currentCalibration = {
+                        frameWidth: result.frameWidth,
+                        frameHeight: result.frameHeight,
+                        offsetX: result.offsetX,
+                        offsetY: result.offsetY,
+                        gapX: result.gapX,
+                        gapY: result.gapY,
+                        gridCols: cols,
+                        gridRows: rows,
+                        sheetLayout: (result.sheetLayout as 'horizontal' | 'vertical') ?? 'horizontal',
+                    };
                     toast.success('Grade calibrada com sucesso!');
                 }
             },
             {
                 mode: 'map',
-                initialGridCols: 1,
-                initialGridRows: 1,
+                initialGridCols: calibration.gridCols,
+                initialGridRows: calibration.gridRows,
                 onBatchExport: (result, scope) => {
                     if (!processedImage) return;
                     const calibration = calibrationResultToBatchGrid(processedImage, result);
@@ -558,6 +714,11 @@ export function initMapSpriteEditor() {
                     properties.variantGroup = group;
                     variantGroupInput.value = group;
                 }
+            }
+
+            const calForSave = readCalibrationFromForm();
+            if (calForSave) {
+                Object.assign(properties, calibrationToPropertyPayload(calForSave));
             }
 
             const rawCategory = categoryInput.value.trim();
@@ -630,8 +791,9 @@ export function initMapSpriteEditor() {
             return;
         }
 
-        const fw = parseInt(frameWidthInput.value) || 64;
-        const fh = parseInt(frameHeightInput.value) || 64;
+        const tileSize = ENGINE_CONFIG.TILE_SIZE;
+        const fw = parseInt(frameWidthInput.value, 10) || tileSize;
+        const fh = parseInt(frameHeightInput.value, 10) || tileSize;
         const ox = parseInt(offsetXInput.value) || 0;
         const oy = parseInt(offsetYInput.value) || 0;
 

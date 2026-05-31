@@ -40,6 +40,34 @@ function sanitizeMapSaveFilename(filename: unknown): string | null {
   return withExt;
 }
 
+/** Copia campos de calibração da grade para tile_properties.json. */
+function mergeMapSpriteCalibrationEntry(
+  entry: Record<string, unknown>,
+  properties: Record<string, unknown> | undefined
+): void {
+  if (!properties) return;
+  const intFields = [
+    'frameWidth',
+    'frameHeight',
+    'offsetX',
+    'offsetY',
+    'gapX',
+    'gapY',
+    'gridCols',
+    'gridRows',
+  ] as const;
+  for (const key of intFields) {
+    const v = properties[key];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      entry[key] = Math.floor(v);
+    }
+  }
+  const layout = properties.sheetLayout;
+  if (layout === 'horizontal' || layout === 'vertical') {
+    entry.sheetLayout = layout;
+  }
+}
+
 function getJsonFiles(dir: string, filesList: string[] = []): string[] {
   if (!fs.existsSync(dir)) return filesList;
   const files = fs.readdirSync(dir);
@@ -283,6 +311,7 @@ export default defineConfig({
                 if (properties.variantStripFrames && Number(properties.variantStripFrames) > 1) {
                   entry.variantStripFrames = Math.floor(Number(properties.variantStripFrames));
                 }
+                mergeMapSpriteCalibrationEntry(entry, properties);
                 allProperties[filename] = entry;
 
                 fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
@@ -368,6 +397,7 @@ export default defineConfig({
                   if (properties?.variantStripFrames && Number(properties.variantStripFrames) > 1) {
                     entry.variantStripFrames = Math.floor(Number(properties.variantStripFrames));
                   }
+                  mergeMapSpriteCalibrationEntry(entry, properties);
                   allProperties[filename] = entry;
                 }
 

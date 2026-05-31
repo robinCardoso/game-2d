@@ -25,6 +25,7 @@ import {
     mergeRuntimeTileProperties,
     takeVariantStripMismatches,
     clampFloorZ,
+    collectSparseTiles,
     createEmptyWorldMap,
     ensureAllFloors,
     getAllFloorZs,
@@ -756,6 +757,9 @@ function resolvePaintSelectionId(selectedId: number): number {
     const tile = TILE_TYPES[selectedId];
     if (!tile) return selectedId;
 
+    // Frame fixo de variant strip — sempre pinta exatamente este tile (sem sorteio).
+    if (tile.variantStripIndex !== undefined) return selectedId;
+
     const brushId = findVariantBrushForTileId(selectedId);
     if (brushId === undefined) return selectedId;
 
@@ -763,8 +767,7 @@ function resolvePaintSelectionId(selectedId: number): number {
     if (
         label.includes('random') ||
         label.includes('randon') ||
-        label.includes('aleat') ||
-        label.includes('vari')
+        label.includes('aleat')
     ) {
         return brushId;
     }
@@ -1018,9 +1021,28 @@ portalEditorController = initPortalEditor({
 // Gerenciador de mapas (modal) — wiring após transitionToMap (ver final do arquivo)
 
 async function reloadTileRegistry(): Promise<void> {
+    const hadPaintedTiles = collectSparseTiles(worldMap, activeMapSize).length > 0;
+    const mapSnapshot = hadPaintedTiles
+        ? serializeMapDocument(worldMap, {
+              size: activeMapSize,
+              spawn: mapSpawn,
+              metadata: worldMetadata,
+              houses: worldHouses,
+              spawns: worldSpawns,
+              portals: worldPortals,
+              tileRegistry: TILE_TYPES,
+              mapId: currentMapId,
+          })
+        : null;
+
     TILE_TYPES = await buildTileRegistryAsync();
     const manifest = await loadVariantGroupManifest();
     attachVariantBrushes(TILE_TYPES, undefined, manifest);
+
+    if (mapSnapshot) {
+        const remapped = loadMapFromJson(mapSnapshot, mapSpawn, TILE_TYPES);
+        worldMap = ensureAllFloors(remapped.worldMap, activeMapSize);
+    }
 
     for (const mismatch of takeVariantStripMismatches()) {
         toast.error(
@@ -1057,7 +1079,7 @@ async function loadCustomTileProperties() {
     await reloadTileRegistry();
 }
 
-void loadCustomTileProperties();
+const tileRegistryReady: Promise<void> = loadCustomTileProperties();
 
 setMapSpriteAfterSaveHandler(() => reloadTileRegistry());
 
@@ -1650,7 +1672,7 @@ importMapInput?.addEventListener('change', () => {
     reader.onload = () => {
         try {
             const raw = JSON.parse(reader.result as string);
-            const loaded = loadMapFromJson(raw, mapSpawn);
+            const loaded = loadMapFromJson(raw, mapSpawn, TILE_TYPES);
             saveState();
             applyLoadedMap(loaded);
             console.log('[Engine] Mapa carregado:', loaded.name, loaded.spawn);
@@ -1736,7 +1758,7 @@ function duplicateFromCurrent(entry: MapEntry) {
         portals: worldPortals,
         tileRegistry: TILE_TYPES,
     });
-    const loaded = loadMapFromJson(doc, mapSpawn);
+    const loaded = loadMapFromJson(doc, mapSpawn, TILE_TYPES);
     registerMap(entry);
     applyLoadedMap(loaded);
     exportCurrentToDownload(`${entry.id}.json`);
@@ -1769,7 +1791,7 @@ async function transitionToMap(targetMapId: string, overrideSpawn?: { x: number;
             });
             disposeActiveMapInstance();
 
-            const template = await loadMapFile(entry);
+            const template = await loadMapFile(entry, TILE_TYPES);
             const { instanceId, data } = createMapInstanceFromTemplate(entry.id, template);
 
             applyLoadedMap({
@@ -1790,7 +1812,7 @@ async function transitionToMap(targetMapId: string, overrideSpawn?: { x: number;
             disposeActiveMapInstance();
             clearOverworldReturnContext();
 
-            const loaded = await loadMapFile(entry);
+            const loaded = await loadMapFile(entry, TILE_TYPES);
             applyLoadedMap({
                 ...loaded,
                 mapId: loaded.mapId ?? entry.id,
@@ -2027,6 +2049,7 @@ function draw() {
             for (let x = startX; x <= endX; x++) {
                 const tid = worldMap[z][y][x];
                 if (tid !== -1) {
+                    if (isVariantBrush(tid)) continue;
                     const tile = TILE_TYPES[tid];
                     if (tile && tile.image && tile.image.complete) {
                         drawRegistryTile(
@@ -2409,6 +2432,7 @@ async function tryRestoreStudioSession(): Promise<boolean> {
 
 async function bootstrapApp(): Promise<void> {
     try {
+        await tileRegistryReady;
         await refreshCreatureCatalog();
 
         if (isStudioMode() && getStudioBoot()?.blankMap) {
@@ -2428,7 +2452,7 @@ async function initDefaultWorld() {
     const entry = MAP_REGISTRY.find((m) => m.id === 'mainland') ?? MAP_REGISTRY[0];
     if (!entry) return;
     try {
-        const loaded = await loadMapFile(entry);
+        const loaded = await loadMapFile(entry, TILE_TYPES);
         applyLoadedMap({
             ...loaded,
             mapId: loaded.mapId ?? entry.id,

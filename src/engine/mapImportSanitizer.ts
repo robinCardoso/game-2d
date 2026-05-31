@@ -125,7 +125,15 @@ export function sanitizeTilesByFloor(
             if (x < 0 || x > maxCoord || y < 0 || y > maxCoord) continue;
             if (id < -2 || id > MAX_TILE_ID) continue;
 
-            floorTiles.push({ x, y, id });
+            const cell: MapTileEntry = { x, y, id };
+            if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+                const refRaw = (entry as Record<string, unknown>).ref;
+                if (typeof refRaw === 'string' && refRaw.trim()) {
+                    cell.ref = refRaw.trim().slice(0, 256);
+                }
+            }
+
+            floorTiles.push(cell);
             total++;
         }
 

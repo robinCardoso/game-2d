@@ -2,6 +2,7 @@ import '../style.css';
 import {
     ENGINE_CONFIG,
     buildTileRegistry,
+    buildTileRegistryAsync,
     clampFloorZ,
     createEmptyWorldMap,
     ensureAllFloors,
@@ -196,13 +197,13 @@ async function transitionToMap(
                 z: player.worldZ,
             });
             disposeActiveMapInstance();
-            const template = await loadMapFile(entry);
+            const template = await loadMapFile(entry, TILE_TYPES);
             const { data } = createMapInstanceFromTemplate(entry.id, template);
             applyLoadedMap({ ...data, mapId: entry.id, spawn: overrideSpawn ?? data.spawn });
         } else {
             disposeActiveMapInstance();
             clearOverworldReturnContext();
-            const loaded = await loadMapFile(entry);
+            const loaded = await loadMapFile(entry, TILE_TYPES);
             applyLoadedMap({
                 ...loaded,
                 mapId: loaded.mapId ?? entry.id,
@@ -469,7 +470,8 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
 
     showLoading('Carregando mundo…');
     await loadCreaturePresets();
-    const loaded = await loadMapFile(entry);
+    TILE_TYPES = await buildTileRegistryAsync();
+    const loaded = await loadMapFile(entry, TILE_TYPES);
     applyLoadedMap({ ...loaded, mapId: loaded.mapId ?? entry.id });
 
     window.addEventListener('keydown', (e) => {

@@ -177,6 +177,15 @@ async function saveVariantStripSprite(options: {
         speedModifier: options.speedModifier,
         isStair: false,
         variantStripFrames: options.frameCount,
+        frameWidth: ENGINE_CONFIG.TILE_SIZE,
+        frameHeight: ENGINE_CONFIG.TILE_SIZE,
+        gridCols: options.frameCount,
+        gridRows: 1,
+        offsetX: 0,
+        offsetY: 0,
+        gapX: 0,
+        gapY: 0,
+        sheetLayout: 'horizontal',
         nameOverride: `${options.stripBaseName.replace(/_/g, ' ')} (${options.frameCount} var.)`,
     };
     if (group) {
