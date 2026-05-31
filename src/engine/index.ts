@@ -14,9 +14,13 @@ export type {
     CollisionQueryContext,
     CreatureSpawn,
     HouseData,
+    MapCoordSystem,
     MapDocument,
+    MapTileEntry,
     PortalData,
     RegistryTile,
+    SparseTileEntry,
+    TileCatalogEntry,
     SpawnPoint,
     TileMetadata,
     TileRegistry,
@@ -25,14 +29,48 @@ export type {
 } from './types';
 export {
     cloneWorldMap,
+    collectSparseTiles,
     createDefaultStarterMap,
     createEmptyWorldMap,
     deserializeMapDocument,
     ensureAllFloors,
     loadMapFromJson,
     serializeMapDocument,
+    sparseTilesToWorldMap,
+    tilesByFloorToSparseEntries,
 } from './worldMap';
-export { buildTileRegistry, getTileFromRegistry } from './tileRegistry';
+export {
+    buildFullTileCatalog,
+    buildTileRefsForMap,
+    enrichTilesWithRefs,
+    getMapCoordSystem,
+    MAP_FORMAT_ID,
+    MAP_SCHEMA_PATH,
+    TILE_CATALOG_PATH,
+    tileToCatalogEntry,
+} from './tileCatalog';
+export {
+    buildMapDocumentExportView,
+    formatMapDocumentJson,
+    groupSparseEntriesByFloor,
+} from './mapDocumentFormat';
+export {
+    buildTileRegistry,
+    buildTileRegistryAsync,
+    getTileFromRegistry,
+    mergeRuntimeTileProperties,
+    takeVariantStripMismatches,
+} from './tileRegistry';
+export {
+    attachVariantBrushes,
+    buildVariantGroupIndex,
+    findVariantBrushForTileId,
+    formatVariantGroupLabel,
+    getVariantSelectionSummary,
+    isVariantBrush,
+    loadVariantGroupManifest,
+    resolvePaintTileId,
+} from './tileVariants';
 export { isStairHoleAtTile, queryWalkable } from './collision';
 export { getTerrainSpeedModifierAt } from './terrain';
 export {

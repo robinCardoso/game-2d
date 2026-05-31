@@ -11,10 +11,12 @@ export interface PortalEditorOptions {
     portals: PortalData[];
     getCurrentMapId: () => string | undefined;
     onPortalsChanged: () => void;
+    onPortalHighlight?: (portal: PortalData | null) => void;
+    onPortalFocus?: (portal: PortalData) => void;
 }
 
 export function initPortalEditor(options: PortalEditorOptions) {
-    const { portals, onPortalsChanged } = options;
+    const { portals, onPortalsChanged, onPortalHighlight, onPortalFocus } = options;
 
     let selectedTargetMapId: string = MAP_REGISTRY[0]?.id ?? '';
     let selectedTargetX = 50;
@@ -69,19 +71,34 @@ export function initPortalEditor(options: PortalEditorOptions) {
             const targetName = entry?.name ?? p.targetMapId;
 
             const row = document.createElement('div');
-            row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:6px 8px;background:#111318;border:1px solid #2d3139;border-radius:6px;margin-bottom:4px;font-size:10px;';
+            row.className = 'portal-list-row';
+            row.dataset.pid = p.id;
+            row.title = 'Passe o mouse para destacar no mapa · Clique para ir até o portal';
             row.innerHTML = `
-                <div>
-                    <div style="color:#e6edf3;font-weight:bold;">🚪 (${p.tileX},${p.tileY},${p.tileZ})</div>
-                    <div style="color:#8b949e;">→ ${targetName} em (${p.targetX},${p.targetY},${p.targetZ})</div>
+                <div class="portal-list-row__info">
+                    <div class="portal-list-row__coords">🚪 (${p.tileX},${p.tileY},${p.tileZ})</div>
+                    <div class="portal-list-row__target">→ ${targetName} em (${p.targetX},${p.targetY},${p.targetZ})</div>
                 </div>
-                <button class="floor-btn portal-del-btn" data-pid="${p.id}" style="padding:2px 6px;font-size:9px;border-color:#ef4444;color:#ef4444;">🗑️</button>
+                <button type="button" class="floor-btn portal-del-btn" data-pid="${p.id}" title="Remover portal">🗑️</button>
             `;
+
+            row.addEventListener('mouseenter', () => {
+                onPortalHighlight?.(p);
+            });
+            row.addEventListener('mouseleave', () => {
+                onPortalHighlight?.(null);
+            });
+            row.addEventListener('click', (e) => {
+                if ((e.target as HTMLElement).closest('.portal-del-btn')) return;
+                onPortalFocus?.(p);
+            });
+
             listEl.appendChild(row);
         });
 
         listEl.querySelectorAll('.portal-del-btn').forEach(btn => {
             btn.addEventListener('click', e => {
+                e.stopPropagation();
                 const pid = (e.currentTarget as HTMLElement).dataset.pid!;
                 const idx = portals.findIndex(p => p.id === pid);
                 if (idx !== -1) {
@@ -148,6 +165,7 @@ export function initPortalEditor(options: PortalEditorOptions) {
             return portals.find(p => p.tileX === tileX && p.tileY === tileY && p.tileZ === tileZ);
         },
         refresh() {
+            onPortalHighlight?.(null);
             populateMapSelect();
             refreshPortalList();
         },

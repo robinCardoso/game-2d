@@ -24,6 +24,14 @@
         "14": "grass_water_mask_14",
         "15": "grass_water_mask_15"
       }
+    },
+    {
+      "id": "grass_stone",
+      "label": "Grama ↔ Pedra (8 bits)",
+      "maskBits": 8,
+      "fillTerrain": "grass",
+      "neighborTerrain": "stone",
+      "tiles": {}
     }
   ]
 }

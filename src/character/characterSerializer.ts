@@ -58,6 +58,9 @@ export function parseCharacterConfig(jsonString: string): CharacterSpriteConfig 
     if (raw.gapY !== undefined && typeof raw.gapY !== 'number') throw new Error('gapY deve ser número.');
     if (raw.anchorX !== undefined && typeof raw.anchorX !== 'number') throw new Error('anchorX deve ser número.');
     if (raw.anchorY !== undefined && typeof raw.anchorY !== 'number') throw new Error('anchorY deve ser número.');
+    if (raw.drawScale !== undefined && (typeof raw.drawScale !== 'number' || raw.drawScale <= 0)) {
+        throw new Error('drawScale deve ser número positivo.');
+    }
     if (raw.chromaKey !== undefined && typeof raw.chromaKey !== 'boolean') throw new Error('chromaKey deve ser booleano.');
 
     return raw as CharacterSpriteConfig;

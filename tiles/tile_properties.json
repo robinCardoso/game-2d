@@ -1,9 +1,20 @@
 {
-  "01_grama": {
+  "01_grama_randon": {
     "walkable": true,
     "speedModifier": 1,
     "isStair": false,
-    "nameOverride": "01-grama",
-    "assetType": "terrain"
+    "nameOverride": "Grama (20 var.)",
+    "assetType": "terrain",
+    "variantGroup": "grass",
+    "variantStripFrames": 20
+  },
+  "grama_20_var_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "grama_20_var_variants",
+    "assetType": "terrain",
+    "variantGroup": "grass",
+    "variantStripFrames": 20
   }
 }

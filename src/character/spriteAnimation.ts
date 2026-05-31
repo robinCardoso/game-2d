@@ -31,6 +31,8 @@ export interface CharacterSpriteConfig {
     gapY?: number;    // Espaçamento vertical entre linhas de frames
     anchorX?: number; // Ajuste fino de âncora/renderização no mapa (X)
     anchorY?: number; // Ajuste fino de âncora/renderização no mapa (Y)
+    /** Escala visual no tile; movimento/colisão permanecem no grid da engine. */
+    drawScale?: number;
     chromaKey?: boolean; // Se ativo, remove o fundo rosa (#FF00FF)
     chromaKeyTolerance?: number; // Tolerância de remoção de cor (10 a 180)
     sheetLayout?: 'horizontal' | 'vertical'; // Orientação da spritesheet
@@ -47,10 +49,12 @@ export class SpriteAnimationController {
     isLoaded: boolean = false;
     onAnimationEndCallback?: () => void;
 
-    constructor(config: CharacterSpriteConfig) {
+    constructor(config: CharacterSpriteConfig, options?: { autoLoad?: boolean }) {
         this.config = config;
         this.currentDirection = config.defaultDirection;
-        this.loadImage();
+        if (options?.autoLoad !== false) {
+            this.loadImage();
+        }
     }
 
     public loadImage() {

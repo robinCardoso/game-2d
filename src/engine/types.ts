@@ -54,16 +54,65 @@ export interface PortalData {
     tileZ: number;
 }
 
+/** Entrada esparso: [x, y, z, tileId] — só células pintadas. */
+export type SparseTileEntry = [number, number, number, number];
+
+/** Célula pintada no formato legível (andar fica na chave do objeto `tiles`). */
+export interface MapTileEntry {
+    x: number;
+    y: number;
+    /** ID numérico do tile no registro da engine (`tileRefs` / `tile_catalog.json`). */
+    id: number;
+    /** Chave estável do sprite (ex. `grama_variants#2`) — informativo para IA; a engine usa `id`. */
+    ref?: string;
+}
+
+/** Entrada do catálogo / legenda de tiles. */
+export interface TileCatalogEntry {
+    id: number;
+    name: string;
+    ref?: string;
+    category?: string;
+    variantGroup?: string;
+    variantIndex?: number;
+    isVariantBrush?: boolean;
+    walkable?: boolean;
+}
+
+/** Descreve o sistema de coordenadas do mapa (para humanos e IA). */
+export interface MapCoordSystem {
+    origin: 'top-left';
+    axisX: string;
+    axisY: string;
+    axisZ: string;
+    validZ: { min: number; max: number };
+    emptyTileId: number;
+    tileUnit: 'cell';
+}
+
 /** Formato exportável / carregável (cliente e ADM usam o mesmo). */
 export interface MapDocument {
     version: 1;
+    /** Identificador do layout do arquivo (ex. game-2d/map-sparse-v1). */
+    format?: string;
+    /** Caminho relativo ao JSON Schema. */
+    schema?: string;
+    /** Explica eixos X/Y/Z e tile vazio — leitura humana e por IA. */
+    coordSystem?: MapCoordSystem;
     name: string;
     size: number;
     /** ID que referencia este mapa no MAP_REGISTRY. */
     mapId?: string;
     /** Tamanho do tile em pixels (64). Mapas antigos sem campo assumem o da engine. */
     tileSize?: number;
-    floors: Record<string, number[][]>;
+    /** Legenda dos tile IDs presentes em `tiles` neste arquivo. */
+    tileRefs?: Record<string, TileCatalogEntry>;
+    /** Grade densa legada: `floors[z][y][x]`. */
+    floors?: Record<string, number[][]>;
+    /** Legado compacto: `[x, y, z, id][]` (ainda aceito na importação). */
+    sparseTiles?: SparseTileEntry[];
+    /** Formato preferido: `tiles["0"]` = lista de células pintadas no andar 0. */
+    tiles?: Record<string, MapTileEntry[]>;
     /** Metadados esparsos indexados por "z_y_x". Ex: "0_50_50" -> { actionId: 2001 } */
     metadata?: Record<string, TileMetadata>;
     houses?: Record<number, HouseData>;
@@ -83,8 +132,19 @@ export interface RegistryTile extends TileProperties {
     category: string;
     /** Categoria da aba Tile no editor: ground | nature | walls | items */
     paletteCategory?: PaletteCategory | string;
-    /** Nome do arquivo PNG (sem extensão), para resolver manifest de auto-borda */
+    /** Nome do arquivo PNG (sem extensão) */
     fileKey?: string;
+    /** Grupo de variação aleatória (ex.: grass) */
+    variantGroup?: string;
+    /** Pincel virtual: sorteia entre variantMemberIds ao pintar */
+    isVariantBrush?: boolean;
+    variantMemberIds?: number[];
+    assetType?: string;
+    /** Recorte dentro de `image` (variant strip) */
+    sourceRect?: { x: number; y: number; w: number; h: number };
+    /** Índice do frame dentro do strip (0 … N-1) */
+    variantStripIndex?: number;
+    variantStripFrames?: number;
 }
 
 export type TileRegistry = Record<number, RegistryTile>;

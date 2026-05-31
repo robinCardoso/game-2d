@@ -53,6 +53,5 @@ Copie `.env.example` → `.env`. Supabase: rode `supabase/schema.sql` no SQL Edi
 ## Docs
 
 - [Jornada do jogador](docs/player-journey.md)
-- [Auto-borda e paleta de tiles](docs/auto-border.md)
 - [Mapas instanciados e multiplayer](docs/instanced-maps-and-multiplayer.md)
 - [Game server](server/README.md)

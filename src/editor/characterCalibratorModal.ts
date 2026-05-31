@@ -1,12 +1,14 @@
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import { computeFrameDimensionsFromGrid } from './calibratorGrid';
-import { toast } from '../utils/popup';
+import { toast, popup } from '../utils/popup';
 
 export interface CalibratorOpenOptions {
     /** map: tile único / spritesheet de terreno; oculta painel de animações */
     mode?: 'map' | 'character';
     initialGridCols?: number;
     initialGridRows?: number;
+    /** Modo mapa: abre diálogo de exportação em lote da grade inteira */
+    onBatchExport?: (result: CalibrationResult, scope: 'all' | 'selected') => void;
 }
 
 export interface CalibrationResult {
@@ -24,6 +26,8 @@ export interface CalibrationResult {
     sheetLayout: string;
     selectedFrameCol?: number;
     selectedFrameRow?: number;
+    /** Frames escolhidos no modo seleção múltipla (ordem de clique) */
+    selectedFrames?: Array<{ col: number; row: number }>;
 }
 
 export function openCharacterCalibrator(
@@ -75,6 +79,20 @@ export function openCharacterCalibrator(
     const calGridResultLabel = document.getElementById('calGridResultLabel');
     const calGridRemainderLabel = document.getElementById('calGridRemainderLabel');
     const calibratorAnimPanel = document.getElementById('calibratorAnimPanel');
+    const calibratorMapFramePanel = document.getElementById('calibratorMapFramePanel');
+    const calMapFrameColInput = document.getElementById('calMapFrameCol') as HTMLInputElement;
+    const calMapFrameRowInput = document.getElementById('calMapFrameRow') as HTMLInputElement;
+    const calMapFrameSummary = document.getElementById('calMapFrameSummary');
+    const calMapFrameTotal = document.getElementById('calMapFrameTotal');
+    const calibratorInstructionHint = document.getElementById('calibratorInstructionHint');
+    const calBatchExportBtn = document.getElementById('calBatchExportBtn');
+    const calBatchExportSelectedBtn = document.getElementById('calBatchExportSelectedBtn') as HTMLButtonElement | null;
+    const calibratorBatchBtnGroup = document.getElementById('calibratorBatchBtnGroup');
+    const calMapMultiSelectToggle = document.getElementById('calMapMultiSelectToggle') as HTMLInputElement | null;
+    const calMapMultiSelectTools = document.getElementById('calMapMultiSelectTools');
+    const calMapSelectAllBtn = document.getElementById('calMapSelectAllBtn');
+    const calMapClearSelectionBtn = document.getElementById('calMapClearSelectionBtn');
+    const calMapSelectionSummary = document.getElementById('calMapSelectionSummary');
 
     if (!modal || !canvas || !ctx) return;
 
@@ -84,6 +102,20 @@ export function openCharacterCalibrator(
 
     if (calibratorAnimPanel) {
         calibratorAnimPanel.style.display = isMapMode ? 'none' : '';
+    }
+    if (calibratorMapFramePanel) {
+        calibratorMapFramePanel.style.display = isMapMode ? '' : 'none';
+    }
+    if (calibratorInstructionHint) {
+        calibratorInstructionHint.innerHTML = isMapMode
+            ? '💡 <strong>Tile único:</strong> Informe colunas e linhas da spritesheet, clique em <em>Aplicar divisão</em>, depois clique no sprite desejado (ou use os campos à direita). Confirme para extrair só esse frame — ou use <em>Exportar todos os frames</em> para gerar a sheet inteira de uma vez.'
+            : '💡 <strong>Instrução:</strong> Clique na imagem para definir a Margem de Início do primeiro frame. Clique e arraste para alinhar a grade de fatiamento com precisão milimétrica!';
+    }
+    if (calBatchExportBtn) {
+        calBatchExportBtn.style.display = isMapMode ? '' : 'none';
+    }
+    if (calibratorBatchBtnGroup) {
+        calibratorBatchBtnGroup.style.display = isMapMode ? '' : 'none';
     }
 
     // Cópia profunda das configurações para manipulação interativa no modal
@@ -246,7 +278,7 @@ export function openCharacterCalibrator(
 
     // Atualiza a visualização do Zoom
     function updateZoom() {
-        const zoom = parseFloat(calZoomInput.value);
+        const zoom = parseInt(calZoomInput.value, 10) / 100;
         calZoomValSpan.innerText = `${Math.round(zoom * 100)}%`;
         canvas.style.width = `${canvas.width * zoom}px`;
         canvas.style.height = `${canvas.height * zoom}px`;
@@ -256,6 +288,125 @@ export function openCharacterCalibrator(
 
     let selectedFrameCol = 0;
     let selectedFrameRow = 0;
+    let syncingMapFrameUI = false;
+    let mapMultiSelectMode = false;
+    const selectedFramesList: Array<{ col: number; row: number }> = [];
+
+    function findSelectedFrameIndex(col: number, row: number): number {
+        return selectedFramesList.findIndex((f) => f.col === col && f.row === row);
+    }
+
+    function toggleFrameInSelection(col: number, row: number): void {
+        const idx = findSelectedFrameIndex(col, row);
+        if (idx >= 0) {
+            selectedFramesList.splice(idx, 1);
+        } else {
+            selectedFramesList.push({ col, row });
+        }
+    }
+
+    function buildCalibrationPayload(): CalibrationResult {
+        return {
+            frameWidth: localFrameWidth,
+            frameHeight: localFrameHeight,
+            offsetX: localOffsetX,
+            offsetY: localOffsetY,
+            gapX: localGapX,
+            gapY: localGapY,
+            anchorX: localAnchorX,
+            anchorY: localAnchorY,
+            animations: localAnimations,
+            currentState: activeState,
+            currentDirection: activeDirection,
+            sheetLayout: localSheetLayout,
+            selectedFrameCol,
+            selectedFrameRow,
+            selectedFrames:
+                selectedFramesList.length > 0 ? [...selectedFramesList] : undefined,
+        };
+    }
+
+    function updateMultiSelectUI(): void {
+        const count = selectedFramesList.length;
+        if (calMapSelectionSummary) {
+            calMapSelectionSummary.style.display = mapMultiSelectMode ? 'block' : 'none';
+            calMapSelectionSummary.textContent =
+                count === 0
+                    ? 'Clique nos tiles para selecionar (clique de novo desmarca)'
+                    : `${count} frame${count === 1 ? '' : 's'} selecionado${count === 1 ? '' : 's'}`;
+        }
+        if (calBatchExportSelectedBtn) {
+            calBatchExportSelectedBtn.disabled = count < 1;
+            calBatchExportSelectedBtn.textContent =
+                count > 0
+                    ? `✅ Exportar selecionados (${count})`
+                    : '✅ Exportar selecionados';
+        }
+        if (calMapMultiSelectTools) {
+            calMapMultiSelectTools.classList.toggle('is-visible', mapMultiSelectMode);
+        }
+    }
+
+    function getVisibleGridSize(): { cols: number; rows: number } {
+        const cols = Math.floor((canvas.width - localOffsetX) / (localFrameWidth + localGapX));
+        const rows = Math.floor((canvas.height - localOffsetY) / (localFrameHeight + localGapY));
+        return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
+    }
+
+    function clampFrameSelection(): void {
+        const { cols, rows } = getVisibleGridSize();
+        if (cols < 1 || rows < 1) return;
+        selectedFrameCol = Math.min(Math.max(0, selectedFrameCol), cols - 1);
+        selectedFrameRow = Math.min(Math.max(0, selectedFrameRow), rows - 1);
+    }
+
+    function updateMapFrameUI(): void {
+        if (!isMapMode) return;
+        const { cols, rows } = getVisibleGridSize();
+        const total = cols * rows;
+        clampFrameSelection();
+
+        if (calMapFrameTotal) {
+            calMapFrameTotal.textContent = total > 0
+                ? `Grade visível: ${cols}×${rows} = ${total} frames (${localFrameWidth}×${localFrameHeight} px cada)`
+                : 'Grade visível: — (defina colunas/linhas e aplique a divisão)';
+        }
+        if (calMapFrameSummary) {
+            const selectionCount = selectedFramesList.length;
+            if (mapMultiSelectMode) {
+                calMapFrameSummary.textContent =
+                    selectionCount > 0
+                        ? `Último clique: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1}`
+                        : 'Nenhum tile marcado ainda';
+            } else {
+                const idx = selectedFrameRow * cols + selectedFrameCol + 1;
+                calMapFrameSummary.textContent = total > 0
+                    ? `Selecionado: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1} (índice ${idx} de ${total})`
+                    : `Selecionado: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1}`;
+            }
+        }
+        if (calMapFrameColInput && calMapFrameRowInput && !mapMultiSelectMode) {
+            syncingMapFrameUI = true;
+            calMapFrameColInput.max = String(Math.max(1, cols));
+            calMapFrameRowInput.max = String(Math.max(1, rows));
+            calMapFrameColInput.value = String(selectedFrameCol + 1);
+            calMapFrameRowInput.value = String(selectedFrameRow + 1);
+            syncingMapFrameUI = false;
+        }
+    }
+
+    function applyMapFrameFromInputs(): void {
+        if (syncingMapFrameUI || !isMapMode) return;
+        const { cols, rows } = getVisibleGridSize();
+        if (cols < 1 || rows < 1) return;
+        const col = (parseInt(calMapFrameColInput?.value ?? '1', 10) || 1) - 1;
+        const row = (parseInt(calMapFrameRowInput?.value ?? '1', 10) || 1) - 1;
+        if (col >= 0 && col < cols && row >= 0 && row < rows) {
+            selectedFrameCol = col;
+            selectedFrameRow = row;
+            renderCalibrator();
+        }
+    }
 
     // Desenha a grade
     function renderCalibrator() {
@@ -289,21 +440,33 @@ export function openCharacterCalibrator(
                     ctx.fillRect(x + localFrameWidth / 2 - 2, y + localFrameHeight / 2 - 2, 4, 4);
                 }
 
-                // Destaque do frame selecionado em modo mapa
-                if (isMapMode && r === selectedFrameRow && c === selectedFrameCol) {
-                    ctx.strokeStyle = '#22c55e'; // Green border
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(x + 1, y + 1, localFrameWidth - 2, localFrameHeight - 2);
-                    ctx.fillStyle = 'rgba(34, 197, 94, 0.25)'; // Green tint
-                    ctx.fillRect(x + 2, y + 2, localFrameWidth - 4, localFrameHeight - 4);
-                    
-                    ctx.fillStyle = '#22c55e';
-                    ctx.font = 'bold 12px sans-serif';
-                    ctx.fillText('SELECIONADO', x + 6, y + 18);
-                    
-                    // Restaura estilos
-                    ctx.strokeStyle = 'rgba(255, 60, 60, 0.7)';
-                    ctx.lineWidth = 1;
+                // Destaque do(s) frame(s) em modo mapa
+                if (isMapMode) {
+                    const multiIdx = mapMultiSelectMode
+                        ? findSelectedFrameIndex(c, r)
+                        : -1;
+                    const isSingleSelected =
+                        !mapMultiSelectMode && r === selectedFrameRow && c === selectedFrameCol;
+                    const isMultiSelected = mapMultiSelectMode && multiIdx >= 0;
+
+                    if (isSingleSelected || isMultiSelected) {
+                        ctx.strokeStyle = '#22c55e';
+                        ctx.lineWidth = 3;
+                        ctx.strokeRect(x + 1, y + 1, localFrameWidth - 2, localFrameHeight - 2);
+                        ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+                        ctx.fillRect(x + 2, y + 2, localFrameWidth - 4, localFrameHeight - 4);
+
+                        ctx.fillStyle = '#22c55e';
+                        ctx.font = 'bold 11px sans-serif';
+                        if (isMultiSelected) {
+                            ctx.fillText(String(multiIdx + 1), x + 5, y + 14);
+                        } else {
+                            ctx.fillText('SELECIONADO', x + 6, y + 18);
+                        }
+
+                        ctx.strokeStyle = 'rgba(255, 60, 60, 0.7)';
+                        ctx.lineWidth = 1;
+                    }
                 }
 
                 // Destaque da animação ativa
@@ -365,6 +528,10 @@ export function openCharacterCalibrator(
                 (localGridRows - 1) * localGapY;
             ctx.fillStyle = 'rgba(251, 191, 36, 0.25)';
             ctx.fillRect(localOffsetX, y, canvas.width - localOffsetX, preview.remainderY);
+        }
+
+        if (isMapMode) {
+            updateMapFrameUI();
         }
     }
 
@@ -428,8 +595,15 @@ export function openCharacterCalibrator(
                 if (col >= 0 && col < cols && row >= 0 && row < rows) {
                     selectedFrameCol = col;
                     selectedFrameRow = row;
+
+                    if (isMapMode && mapMultiSelectMode) {
+                        toggleFrameInSelection(col, row);
+                        updateMultiSelectUI();
+                    } else if (isMapMode) {
+                        toast.info(`Frame selecionado: col ${col + 1}, linha ${row + 1}`);
+                    }
+
                     renderCalibrator();
-                    toast.info(`Selecionado frame: Col ${col + 1}, Linha ${row + 1}`);
                 }
             }
         }
@@ -480,6 +654,45 @@ export function openCharacterCalibrator(
         });
     });
 
+    calMapFrameColInput?.addEventListener('input', applyMapFrameFromInputs);
+    calMapFrameRowInput?.addEventListener('change', applyMapFrameFromInputs);
+    calMapFrameRowInput?.addEventListener('input', applyMapFrameFromInputs);
+    calMapFrameColInput?.addEventListener('change', applyMapFrameFromInputs);
+
+    calMapMultiSelectToggle?.addEventListener('change', () => {
+        mapMultiSelectMode = calMapMultiSelectToggle.checked;
+        if (mapMultiSelectMode) {
+            if (findSelectedFrameIndex(selectedFrameCol, selectedFrameRow) < 0) {
+                selectedFramesList.push({ col: selectedFrameCol, row: selectedFrameRow });
+            }
+        }
+        updateMultiSelectUI();
+        updateMapFrameUI();
+        renderCalibrator();
+    });
+
+    calMapSelectAllBtn?.addEventListener('click', () => {
+        const { cols, rows } = getVisibleGridSize();
+        if (cols < 1 || rows < 1) return;
+        selectedFramesList.length = 0;
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                selectedFramesList.push({ col: c, row: r });
+            }
+        }
+        mapMultiSelectMode = true;
+        if (calMapMultiSelectToggle) calMapMultiSelectToggle.checked = true;
+        updateMultiSelectUI();
+        renderCalibrator();
+        toast.info(`${selectedFramesList.length} frames marcados.`);
+    });
+
+    calMapClearSelectionBtn?.addEventListener('click', () => {
+        selectedFramesList.length = 0;
+        updateMultiSelectUI();
+        renderCalibrator();
+    });
+
     calSheetLayoutSelect?.addEventListener('change', () => {
         localSheetLayout = calSheetLayoutSelect.value as 'horizontal' | 'vertical';
         renderCalibrator();
@@ -516,10 +729,53 @@ export function openCharacterCalibrator(
     closeBtn?.addEventListener('click', closeModal);
     cancelBtn?.addEventListener('click', closeModal);
 
+    calBatchExportBtn?.addEventListener('click', async () => {
+        if (!isMapMode || !options?.onBatchExport) return;
+        if (localFrameWidth < 1 || localFrameHeight < 1) {
+            toast.error('Defina a grade (colunas/linhas + Aplicar divisão) antes de exportar.');
+            return;
+        }
+        const { cols, rows } = getVisibleGridSize();
+        if (cols * rows < 2) {
+            toast.error(
+                'A grade precisa ter 2 ou mais frames. Informe colunas/linhas e clique em Aplicar divisão.'
+            );
+            return;
+        }
+        if (selectedFramesList.length > 0) {
+            const ok = await popup.confirm(
+                `Você tem <strong>${selectedFramesList.length}</strong> frame(s) marcados.<br><br>Exportar <strong>todos os ${cols * rows}</strong> da grade cria um PNG por célula.<br><br>Para variantes aleatórias use <strong>✅ Exportar selecionados</strong> (1 arquivo).<br><br>Exportar a sheet inteira mesmo assim?`,
+                'Exportar todos os frames'
+            );
+            if (!ok) return;
+        }
+        options.onBatchExport(buildCalibrationPayload(), 'all');
+    });
+
+    calBatchExportSelectedBtn?.addEventListener('click', () => {
+        if (!isMapMode || !options?.onBatchExport) return;
+        if (selectedFramesList.length < 1) {
+            toast.error('Selecione pelo menos 1 frame (ative seleção múltipla e clique nos tiles).');
+            return;
+        }
+        if (localFrameWidth < 1 || localFrameHeight < 1) {
+            toast.error('Defina a grade antes de exportar.');
+            return;
+        }
+        options.onBatchExport(buildCalibrationPayload(), 'selected');
+    });
+
     confirmBtn?.addEventListener('click', () => {
         if (localFrameWidth < 1 || localFrameHeight < 1) {
             toast.error('Largura e altura do frame devem ser maiores que 0. Use "Aplicar divisão" ou ajuste manualmente.');
             return;
+        }
+        if (isMapMode) {
+            const { cols, rows } = getVisibleGridSize();
+            if (cols * rows <= 1 && (imageW > localFrameWidth || imageH > localFrameHeight)) {
+                toast.error('A grade está em 1×1 — a imagem inteira seria exportada. Defina colunas/linhas e aplique a divisão antes de confirmar.');
+                return;
+            }
         }
         syncUIToAnimation();
         onConfirm({
@@ -548,6 +804,7 @@ export function openCharacterCalibrator(
         previewDivisionFromUI();
     }
     syncAnimationToUI();
+    updateMultiSelectUI();
     updateZoom();
     modal.classList.add('is-open');
     renderCalibrator();

@@ -54,6 +54,20 @@ function getJsonFiles(dir: string, filesList: string[] = []): string[] {
   return filesList;
 }
 
+function getSubdirectories(dir: string, baseDir: string, foldersList: string[] = []): string[] {
+  if (!fs.existsSync(dir)) return foldersList;
+  const files = fs.readdirSync(dir);
+  for (const file of files) {
+    const name = path.join(dir, file);
+    if (fs.statSync(name).isDirectory()) {
+      const relative = path.relative(baseDir, name).replace(/\\/g, '/');
+      foldersList.push(relative);
+      getSubdirectories(name, baseDir, foldersList);
+    }
+  }
+  return foldersList;
+}
+
 export default defineConfig({
   build: {
     target: 'es2022',
@@ -84,11 +98,37 @@ export default defineConfig({
             return;
           }
 
-          if (req.url === '/api/list-characters' && req.method === 'GET') {
+          if (req.url === '/api/list-maps' && req.method === 'GET') {
+            try {
+              const mapsDir = path.resolve(__dirname, 'public/maps');
+              const entries = fs.existsSync(mapsDir)
+                ? fs
+                    .readdirSync(mapsDir)
+                    .filter((f) => f.endsWith('.json'))
+                    .map((f) => ({
+                      name: f,
+                      mtime: fs.statSync(path.join(mapsDir, f)).mtimeMs,
+                    }))
+                    .sort((a, b) => b.mtime - a.mtime)
+                : [];
+              const files = entries.map((e) => e.name);
+              const latest = entries[0]?.name ?? null;
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, files, latest }));
+            } catch (err: any) {
+              console.error('[Vite Backend] Erro ao listar mapas:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          } else if (req.url === '/api/list-characters' && req.method === 'GET') {
             try {
               const config = getGameConfig();
               const charactersDir = path.resolve(__dirname, config.charactersDir);
               const jsonFiles = getJsonFiles(charactersDir);
+              const folders = getSubdirectories(charactersDir, charactersDir);
               const characters = jsonFiles.map(filePath => {
                 const content = fs.readFileSync(filePath, 'utf-8');
                 const config = JSON.parse(content);
@@ -103,7 +143,7 @@ export default defineConfig({
 
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ success: true, characters }));
+              res.end(JSON.stringify({ success: true, characters, folders }));
             } catch (err: any) {
               console.error('[Vite Backend] Erro ao listar personagens:', err);
               res.statusCode = 500;
@@ -130,20 +170,6 @@ export default defineConfig({
               };
 
               const allPngs = getPngFiles(mapsTilesDir);
-
-              const getSubdirectories = (dir: string, baseDir: string, foldersList: string[] = []): string[] => {
-                if (!fs.existsSync(dir)) return foldersList;
-                const files = fs.readdirSync(dir);
-                for (const file of files) {
-                  const name = path.join(dir, file);
-                  if (fs.statSync(name).isDirectory()) {
-                    const relative = path.relative(baseDir, name).replace(/\\/g, '/');
-                    foldersList.push(relative);
-                    getSubdirectories(name, baseDir, foldersList);
-                  }
-                }
-                return foldersList;
-              };
 
               const folders = getSubdirectories(mapsTilesDir, mapsTilesDir);
 
@@ -249,16 +275,13 @@ export default defineConfig({
                   isStair: properties.isStair ?? false,
                   stairDirection: properties.isStair ? 'up' : undefined,
                   nameOverride: name,
-                  assetType: assetType, // Salva o tipo do asset
+                  assetType: assetType,
                 };
-                if (properties.participatesInAutoBorder) {
-                  entry.participatesInAutoBorder = true;
-                  entry.tileRole = properties.tileRole ?? 'fill';
-                  if (properties.terrainGroup) entry.terrainGroup = properties.terrainGroup;
-                  if (properties.tileRole === 'border') {
-                    entry.borderSetId = properties.borderSetId;
-                    entry.borderMask = properties.borderMask;
-                  }
+                if (properties.variantGroup && String(properties.variantGroup).trim()) {
+                  entry.variantGroup = String(properties.variantGroup).trim().toLowerCase();
+                }
+                if (properties.variantStripFrames && Number(properties.variantStripFrames) > 1) {
+                  entry.variantStripFrames = Math.floor(Number(properties.variantStripFrames));
                 }
                 allProperties[filename] = entry;
 
@@ -275,17 +298,39 @@ export default defineConfig({
                 res.end(JSON.stringify({ error: err.message }));
               }
             });
-          } else if (req.url === '/api/save-auto-border-set' && req.method === 'POST') {
+          } else if (req.url === '/api/save-map-sprites-batch' && req.method === 'POST') {
             let body = '';
-            req.on('data', (chunk) => (body += chunk));
+            req.on('data', chunk => body += chunk);
             req.on('end', () => {
               try {
-                const { set, pngs, allSets } = JSON.parse(body);
-                if (!set?.id) throw new Error('Conjunto inválido');
+                const { assetType, category, sprites } = JSON.parse(body);
+                if (!Array.isArray(sprites) || sprites.length === 0) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'Lista de sprites vazia.' }));
+                  return;
+                }
+                if (sprites.length > 100) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'Máximo de 100 sprites por lote.' }));
+                  return;
+                }
 
-                const borderDir = path.resolve(__dirname, 'tiles/terrain/borders', set.id);
-                if (!fs.existsSync(borderDir)) {
-                  fs.mkdirSync(borderDir, { recursive: true });
+                let subPath = '';
+                if (category) {
+                  let sanitizedCategory = String(category)
+                    .replace(/[^a-zA-Z0-9_\-\/]/g, '')
+                    .replace(/\.\./g, '');
+                  sanitizedCategory = sanitizedCategory
+                    .replace(/^(tiles\/)?(maps|terrain|items)\//i, '')
+                    .replace(/^(tiles\/)?(maps|terrain|items)$/i, '');
+                  subPath = sanitizedCategory;
+                }
+
+                const targetDir = path.resolve(__dirname, 'tiles/maps', subPath);
+                if (!fs.existsSync(targetDir)) {
+                  fs.mkdirSync(targetDir, { recursive: true });
                 }
 
                 const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
@@ -294,41 +339,46 @@ export default defineConfig({
                   allProperties = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
                 }
 
-                for (const item of pngs || []) {
-                  const fileKey = item.fileKey as string;
-                  const dataUrl = item.dataUrl as string;
-                  if (!dataUrl?.startsWith('data:image/png;base64,')) continue;
-                  const imageBuffer = Buffer.from(
-                    dataUrl.replace(/^data:image\/png;base64,/, ''),
-                    'base64'
-                  );
-                  fs.writeFileSync(path.resolve(borderDir, `${fileKey}.png`), imageBuffer);
-                  allProperties[fileKey] = {
-                    walkable: true,
-                    speedModifier: 1.0,
-                    nameOverride: `${set.label} máscara ${item.mask}`,
-                    participatesInAutoBorder: true,
-                    terrainGroup: set.fillTerrain,
-                    tileRole: 'border',
-                    borderSetId: set.id,
-                    borderMask: item.mask,
+                let savedCount = 0;
+                for (const sprite of sprites) {
+                  const { name, spriteBase64, properties } = sprite;
+                  const filename = String(name).toLowerCase().replace(/[^a-z0-9]/g, '_');
+
+                  if (spriteBase64 && String(spriteBase64).startsWith('data:image/png;base64,')) {
+                    const imageBuffer = Buffer.from(
+                      String(spriteBase64).replace(/^data:image\/png;base64,/, ''),
+                      'base64'
+                    );
+                    const imagePath = path.resolve(targetDir, `${filename}.png`);
+                    fs.writeFileSync(imagePath, imageBuffer);
+                    savedCount++;
+                  }
+
+                  const entry: Record<string, unknown> = {
+                    walkable: properties?.walkable ?? true,
+                    speedModifier: parseFloat(properties?.speedModifier) || 1.0,
+                    isStair: properties?.isStair ?? false,
+                    stairDirection: properties?.isStair ? 'up' : undefined,
+                    nameOverride: name,
+                    assetType: assetType ?? 'terrain',
                   };
+                  if (properties?.variantGroup && String(properties.variantGroup).trim()) {
+                    entry.variantGroup = String(properties.variantGroup).trim().toLowerCase();
+                  }
+                  if (properties?.variantStripFrames && Number(properties.variantStripFrames) > 1) {
+                    entry.variantStripFrames = Math.floor(Number(properties.variantStripFrames));
+                  }
+                  allProperties[filename] = entry;
                 }
 
                 fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
-
-                const manifestPath = path.resolve(__dirname, 'public/auto_border_sets.json');
-                const manifest = {
-                  version: 1,
-                  sets: allSets || [set],
-                };
-                fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+                console.log(`[Vite Backend] Lote de ${savedCount} sprites salvo em: ${targetDir}`);
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ success: true, setId: set.id }));
+                res.end(JSON.stringify({ success: true, saved: savedCount }));
               } catch (err: any) {
-                console.error('[Vite Backend] Erro ao salvar auto-border set:', err);
+                console.error('[Vite Backend] Erro ao salvar lote de sprites:', err);
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ error: err.message }));
@@ -358,10 +408,19 @@ export default defineConfig({
                   res.end(JSON.stringify({ error: 'Nome de arquivo inválido.' }));
                   return;
                 }
-                if (!parsed.document || typeof parsed.document !== 'object') {
+                if (typeof parsed.json === 'string' && parsed.json.trim()) {
+                  try {
+                    JSON.parse(parsed.json);
+                  } catch {
+                    res.statusCode = 400;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ error: 'Campo json não é JSON válido.' }));
+                    return;
+                  }
+                } else if (!parsed.document || typeof parsed.document !== 'object') {
                   res.statusCode = 400;
                   res.setHeader('Content-Type', 'application/json');
-                  res.end(JSON.stringify({ error: 'Campo document ausente ou inválido.' }));
+                  res.end(JSON.stringify({ error: 'Campo json ou document ausente ou inválido.' }));
                   return;
                 }
 
@@ -379,11 +438,14 @@ export default defineConfig({
                   return;
                 }
 
-                fs.writeFileSync(
-                  targetPath,
-                  JSON.stringify(parsed.document, null, 2),
-                  'utf-8'
-                );
+                const fileContents =
+                  typeof parsed.json === 'string' && parsed.json.trim()
+                    ? parsed.json.endsWith('\n')
+                      ? parsed.json
+                      : `${parsed.json}\n`
+                    : `${JSON.stringify(parsed.document, null, 2)}\n`;
+
+                fs.writeFileSync(targetPath, fileContents, 'utf-8');
                 console.log(`[Vite Backend] Mapa salvo em: ${targetPath}`);
 
                 res.statusCode = 200;
@@ -396,6 +458,39 @@ export default defineConfig({
                 );
               } catch (err: any) {
                 console.error('[Vite Backend] Erro ao salvar mapa:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: err.message }));
+              }
+            });
+          } else if (req.url === '/api/save-tile-catalog' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body || '{}');
+                if (!parsed.catalog || typeof parsed.catalog !== 'object') {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'Campo catalog ausente ou inválido.' }));
+                  return;
+                }
+
+                const targetPath = path.resolve(__dirname, 'public/tile_catalog.json');
+                fs.writeFileSync(
+                  targetPath,
+                  `${JSON.stringify(parsed.catalog, null, 2)}\n`,
+                  'utf-8'
+                );
+                console.log(`[Vite Backend] Catálogo de tiles salvo em: ${targetPath}`);
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({ success: true, path: 'public/tile_catalog.json' })
+                );
+              } catch (err: any) {
+                console.error('[Vite Backend] Erro ao salvar catálogo de tiles:', err);
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ error: err.message }));
@@ -463,6 +558,54 @@ export default defineConfig({
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ error: err.message }));
+              }
+            });
+          } else if (req.url === '/api/upsert-creature-preset' && req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk) => { body += chunk; });
+            req.on('end', () => {
+              try {
+                const entry = JSON.parse(body);
+                if (!entry || typeof entry.name !== 'string' || !entry.name.trim()) {
+                  throw new Error('Campo name é obrigatório.');
+                }
+                if (entry.type !== 'npc' && entry.type !== 'monster') {
+                  throw new Error('Campo type deve ser "npc" ou "monster".');
+                }
+                if (typeof entry.configPath !== 'string' || !entry.configPath.trim()) {
+                  throw new Error('Campo configPath é obrigatório.');
+                }
+                const validSizes = new Set(['tiny', 'small', 'medium', 'large', 'boss']);
+                const presetsPath = path.resolve(__dirname, 'public/creature_presets.json');
+                let presets: unknown[] = [];
+                if (fs.existsSync(presetsPath)) {
+                  const raw = JSON.parse(fs.readFileSync(presetsPath, 'utf-8'));
+                  if (Array.isArray(raw)) presets = raw;
+                }
+                const sanitized = {
+                  name: entry.name.trim(),
+                  type: entry.type,
+                  configPath: entry.configPath.trim().replace(/^\//, ''),
+                  description: typeof entry.description === 'string' ? entry.description : '',
+                  color: typeof entry.color === 'string' ? entry.color : undefined,
+                  visualSize: validSizes.has(entry.visualSize) ? entry.visualSize : undefined,
+                };
+                const idx = presets.findIndex(
+                  (p) => p && typeof p === 'object' && (p as { name?: string }).name === sanitized.name
+                );
+                if (idx >= 0) presets[idx] = sanitized;
+                else presets.push(sanitized);
+                fs.writeFileSync(presetsPath, JSON.stringify(presets, null, 2) + '\n');
+                console.log(`[Vite Backend] Creature preset upserted: ${sanitized.name}`);
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, preset: sanitized }));
+              } catch (err: unknown) {
+                const message = err instanceof Error ? err.message : String(err);
+                console.error('[Vite Backend] Erro ao upsert creature preset:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: message }));
               }
             });
           } else {

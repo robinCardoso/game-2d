@@ -281,3 +281,37 @@ export async function promptCreateNewMap(
     deps.createBlankMap(entry);
     toast.success(`Mapa "${entry.name}" criado. Exporte o JSON para public/maps/${entry.id}.json`);
 }
+
+/**
+ * Garante que o mapa ativo tem ID e entrada no registry antes de salvar em disco.
+ * Preserva o worldMap atual — só registra metadados se ainda não houver mapa ativo.
+ */
+export async function ensureMapEntryForSave(
+    currentMapId: string | undefined,
+    activeMapSize: number
+): Promise<MapEntry | null> {
+    if (currentMapId) {
+        const existing = MAP_REGISTRY.find((m) => m.id === currentMapId);
+        if (existing) return existing;
+    }
+
+    const entry = await promptMapEntryFields('Registrar mapa antes de salvar', {
+        id: currentMapId ?? 'meu_mapa',
+        name: currentMapId ?? 'Meu mapa',
+        file: `maps/${currentMapId ?? 'meu_mapa'}.json`,
+        size: activeMapSize,
+        instanced: false,
+    });
+    if (!entry) return null;
+
+    if (MAP_REGISTRY.some((m) => m.id === entry.id && m.id !== currentMapId)) {
+        const replace = await popup.confirm(
+            `O ID "${entry.id}" já existe no registry. Usar esse ID para o mapa atual?`,
+            'ID duplicado'
+        );
+        if (!replace) return null;
+    }
+
+    registerMap(entry);
+    return entry;
+}

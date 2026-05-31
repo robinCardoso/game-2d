@@ -3,7 +3,7 @@ import { HistoryManager } from './functions/history';
 import { mergeCustomTileProperties } from './functions/tileConfig';
 import { AccountType, getRolePermissions } from './functions/roles';
 import { toast, popup } from './utils/popup';
-import { saveMapDocumentToDevPublic } from './utils/mapDevSave';
+import { saveMapDocumentToDevPublic, saveTileCatalogToDevPublic } from './utils/mapDevSave';
 import {
     captureOverworldReturnIfNeeded,
     clearOverworldReturnContext,
@@ -14,13 +14,16 @@ import {
 } from './engine/mapInstance';
 import { SpriteAnimationController } from './character/spriteAnimation';
 import { createDefaultCharacterConfig } from './character/characterSerializer';
+import { respawnEntitiesFromSpawns } from './character/respawnEntities';
 import { GameEntity } from './character/entity';
-import { initCharacterEditor } from './editor/characterEditor';
+import { initCharacterEditor, setSpriteEditorProfile, getSpriteEditorFlyoutTitle, type SpriteProfileId } from './editor/characterEditor';
 import { initMapSpriteEditor, setMapSpriteAfterSaveHandler } from './editor/mapSpriteEditor';
 import { NpcAI } from './character/npcAI';
 import {
     ENGINE_CONFIG,
-    buildTileRegistry,
+    buildTileRegistryAsync,
+    mergeRuntimeTileProperties,
+    takeVariantStripMismatches,
     clampFloorZ,
     createEmptyWorldMap,
     ensureAllFloors,
@@ -30,6 +33,7 @@ import {
     loadMapFromJson,
     queryWalkable,
     serializeMapDocument,
+    formatMapDocumentJson,
     type CollisionQueryContext,
     type WorldMap,
 } from './engine';
@@ -62,12 +66,35 @@ import {
 import { PlayerMovement } from './movement/playerMovement';
 import { DEFAULT_WS_PORT } from '../shared/protocol';
 import { GameNetClient } from './net/gameNetClient';
+import { getStudioBoot, isStudioMode } from './studio/studioBoot';
+import {
+    resolveStudioMapIdToLoad,
+    writeStudioLastMapId,
+} from './studio/studioMapSession';
+import { drawRegistryTile } from './engine/tileDraw';
+import {
+    attachVariantBrushes,
+    findVariantBrushForTileId,
+    formatVariantGroupLabel,
+    getVariantGroupForBrush,
+    getVariantSelectionSummary,
+    isVariantBrush,
+    loadVariantGroupManifest,
+    resolvePaintTileId,
+} from './engine/tileVariants';
 
 // --- ENGINE ---
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
 /** Tamanho N×N do mapa ativo (atualizado ao carregar/importar outro MapDocument). */
 let activeMapSize: number = ENGINE_CONFIG.MAP_SIZE;
-export let TILE_TYPES = buildTileRegistry();
+export let TILE_TYPES: import('./engine/types').TileRegistry = {
+    [ENGINE_CONFIG.EMPTY_TILE_ID]: {
+        id: ENGINE_CONFIG.EMPTY_TILE_ID,
+        name: 'Vazio',
+        walkable: false,
+        category: 'all',
+    },
+};
 
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
 let worldMetadata: Record<string, import('./engine/types').TileMetadata> = {};
@@ -94,29 +121,22 @@ function createCollisionContext(): CollisionQueryContext {
 }
 
 // --- CONTROLES E MÓDULOS MODULARES ---
-import { initMapEditor, floodFill, type MapEditorController } from './editor/mapEditor';
+import { initMapEditor, floodFill, floodFillRandom, type MapEditorController } from './editor/mapEditor';
+import {
+    PAINT_BRUSH_SIZE_OPTIONS,
+    getBrushFootprint,
+    iterBrushCells,
+    type PaintBrushSize,
+} from './editor/paintBrush';
 import { ZoneType, ZONE_COLORS } from './engine/zones';
 import { initHouseManager } from './editor/houseManager';
-import { initSpawnEditor } from './editor/spawnEditor';
+import { initSpawnEditor, getSpawnDisplayColor } from './editor/spawnEditor';
+import { loadCreaturePresets } from './editor/creaturePresets';
 import { initPortalEditor } from './editor/portalEditor';
 import { loadMapFile } from './engine/worldLoader';
 import { MAP_REGISTRY, registerMap, type MapEntry } from './engine/mapRegistry';
 import type { PortalData } from './engine/types';
-import { initMapManagerUI, promptCreateNewMap } from './editor/mapManager';
-import { initAutoBorderEditor } from './editor/autoBorderEditor';
-import {
-    getAutoBorderPaintTileId,
-    populateAutoBorderBrushSelect,
-    populateAutoBorderSetSelect,
-    refreshAutoBorderManifest,
-    resetLastBorderCellsChanged,
-    getLastBorderCellsChanged,
-    runAutoBorderAt,
-    runAutoBorderRegion,
-    isAutoBorderEnabled,
-    setAutoBorderEnabled,
-    setActiveAutoBorderSetId,
-} from './editor/autoBorderState';
+import { initMapManagerUI, promptCreateNewMap, ensureMapEntryForSave } from './editor/mapManager';
 
 let mapEditorController: MapEditorController;
 let spawnEditorController: ReturnType<typeof initSpawnEditor>;
@@ -124,6 +144,8 @@ let portalEditorController: ReturnType<typeof initPortalEditor>;
 let editingFloor = 0;
 
 let activeMapEditorTab = 'paint';
+let paintBrushSize: PaintBrushSize = 1;
+let paintBrushPreview: { tx: number; ty: number } | null = null;
 let selectedZoneType: ZoneType = ZoneType.NORMAL;
 let selectedHouseId: number = 1;
 let worldSpawns: import('./engine/types').CreatureSpawn[] = [];
@@ -208,6 +230,7 @@ function updateRoleUI() {
     }
 
     editorShell?.setEditorMenusVisible(permissions.canEditMap);
+    updatePaintBrushSizeBarVisibility();
 
     // Restringe os checkboxes de mecânicas se for Player/Tutor
     if (collisionToggle && boatToggle) {
@@ -340,8 +363,11 @@ const characterSpeed: CharacterSpeedState = createDefaultCharacterSpeed();
 const playerEquipment: EquipmentState = createDefaultEquipment();
 const speedBuffs = new SpeedBuffManager();
 
-// Tenta carregar o preset do localStorage se existir
+// Tenta carregar o preset do localStorage se existir (desativado no GM Studio)
 function getSavedOrInitialCharacterConfig() {
+    if (getStudioBoot()?.skipCharacterPreset) {
+        return createDefaultCharacterConfig();
+    }
     try {
         const saved = localStorage.getItem('game2d_active_character_config');
         if (saved) {
@@ -358,7 +384,10 @@ function getSavedOrInitialCharacterConfig() {
     return createDefaultCharacterConfig();
 }
 
-export const activeCharacterController = new SpriteAnimationController(getSavedOrInitialCharacterConfig());
+export const activeCharacterController = new SpriteAnimationController(
+    getSavedOrInitialCharacterConfig(),
+    { autoLoad: !getStudioBoot()?.skipCharacterPreset }
+);
 
 function resolveGameServerUrl(): string | null {
     const env = import.meta.env.VITE_GAME_SERVER_WS;
@@ -368,7 +397,8 @@ function resolveGameServerUrl(): string | null {
     return null;
 }
 
-const gameServerUrl = resolveGameServerUrl();
+const gameServerUrl =
+    getStudioBoot()?.skipGameNet ? null : resolveGameServerUrl();
 const gameNet: GameNetClient | null = gameServerUrl
     ? new GameNetClient({
           url: gameServerUrl,
@@ -401,42 +431,11 @@ export const npcs: GameEntity[] = [];
 
 // Reconstrói as entidades ativas no jogo com base nos spawns pintados
 export function respawnEntities() {
-    npcs.length = 0;
-    worldSpawns.forEach(spawn => {
-        if (
-            !Number.isFinite(spawn.x) ||
-            !Number.isFinite(spawn.y) ||
-            !Number.isFinite(spawn.z) ||
-            spawn.x < 0 ||
-            spawn.y < 0 ||
-            spawn.x >= activeMapSize ||
-            spawn.y >= activeMapSize ||
-            spawn.z < ENGINE_CONFIG.MIN_FLOOR_Z ||
-            spawn.z > ENGINE_CONFIG.MAX_FLOOR_Z
-        ) {
-            return;
-        }
-        const config = createDefaultCharacterConfig();
-        config.name = spawn.name;
-
-        // Customizações cosméticas
-        if (spawn.name === 'Wolf') {
-            config.spriteSheetUrl = 'tiles/characters/knight.png';
-        } else if (spawn.name === 'Demon') {
-            config.spriteSheetUrl = 'tiles/characters/knight.png';
-        }
-
-        const entity = new GameEntity(
-            spawn.id,
-            spawn.name,
-            config,
-            spawn.x,
-            spawn.y,
-            spawn.z,
-            spawn.type === 'monster' ? 5 : 3, // Raio de caminhada maior para monstros
-            spawn.type
-        );
-        npcs.push(entity);
+    respawnEntitiesFromSpawns({
+        spawns: worldSpawns,
+        npcs,
+        mapSize: activeMapSize,
+        tileSize: TILE_SIZE_SCREEN,
     });
 }
 
@@ -591,14 +590,32 @@ function setupMovementDevControls(): void {
     });
 }
 
+async function refreshCreatureCatalog(): Promise<void> {
+    await loadCreaturePresets();
+    spawnEditorController?.refresh();
+    respawnEntities();
+}
+
+function parseSpriteProfile(value: string | undefined): SpriteProfileId {
+    if (value === 'npc' || value === 'monster') return value;
+    return 'player';
+}
+
 editorShell = initEditorShell();
+editorShell.setPanelOpenHook((id, trigger) => {
+    if (id !== 'character') return;
+    const profile = parseSpriteProfile(trigger?.dataset.spriteProfile);
+    setSpriteEditorProfile(profile);
+    const titleEl = document.getElementById('flyoutTitle');
+    if (titleEl) titleEl.textContent = getSpriteEditorFlyoutTitle(profile);
+});
 initGridPlayerPosition(player, TILE_SIZE_SCREEN);
 initFloorControls();
 syncEquipmentToStats();
 refreshPlayerMovementSpeed();
 setupMovementDevControls();
 updateRoleUI();
-initCharacterEditor();
+initCharacterEditor({ onCatalogChanged: refreshCreatureCatalog });
 initMapSpriteEditor();
 
 // --- SISTEMA PREMIUM DE TELETRANSPORTE (IR PARA POSIÇÃO) ---
@@ -702,13 +719,213 @@ document.querySelectorAll('.custom-number-input').forEach(wrapper => {
 });
 
 // Inicialização modular do Editor de Mapa
+function updateTileBrushStatus(selectedId: number): void {
+    const statusEl = document.getElementById('statusTileBrush');
+    if (!statusEl) return;
+    const summary = getVariantSelectionSummary(selectedId, TILE_TYPES);
+    if (summary.isRandomBrush) {
+        statusEl.textContent = `🎲 ${summary.groupLabel} (${summary.memberCount} var.)`;
+        statusEl.title = summary.tileName;
+    } else if (summary.groupKey && summary.groupLabel) {
+        statusEl.textContent = `🧱 ${summary.tileName} · grupo ${summary.groupLabel}`;
+        statusEl.title = 'Variante fixa de grupo';
+    } else {
+        statusEl.textContent = `🧱 ${summary.tileName}`;
+        statusEl.title = 'Tile selecionado';
+    }
+}
+
+function updateVariantBrushHint(selectedId: number): void {
+    const hint = document.getElementById('paintVariantBrushHint');
+    const labelEl = document.getElementById('paintVariantBrushHintLabel');
+    if (!hint || !labelEl) return;
+
+    if (isVariantBrush(selectedId)) {
+        const summary = getVariantSelectionSummary(selectedId, TILE_TYPES);
+        const count = summary.memberCount ?? 0;
+        labelEl.textContent = `${summary.groupLabel} aleatório (${count} variantes)`;
+        hint.style.display = 'block';
+    } else {
+        hint.style.display = 'none';
+    }
+}
+
+function resolvePaintSelectionId(selectedId: number): number {
+    if (isVariantBrush(selectedId)) return selectedId;
+
+    const tile = TILE_TYPES[selectedId];
+    if (!tile) return selectedId;
+
+    const brushId = findVariantBrushForTileId(selectedId);
+    if (brushId === undefined) return selectedId;
+
+    const label = `${tile.name || ''} ${tile.fileKey || ''}`.toLowerCase();
+    if (
+        label.includes('random') ||
+        label.includes('randon') ||
+        label.includes('aleat') ||
+        label.includes('vari')
+    ) {
+        return brushId;
+    }
+
+    return selectedId;
+}
+
+function initPaintBrushSizeBar(): void {
+    const container = document.getElementById('paintBrushSizeOptions');
+    if (!container) return;
+
+    container.innerHTML = '';
+    for (const size of PAINT_BRUSH_SIZE_OPTIONS) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `paint-brush-size-btn${size === paintBrushSize ? ' active' : ''}`;
+        btn.textContent = String(size);
+        btn.title = `${size}×${size} tiles por clique`;
+        btn.dataset.brushSize = String(size);
+        btn.onclick = () => {
+            paintBrushSize = size;
+            container.querySelectorAll('.paint-brush-size-btn').forEach((el) => {
+                el.classList.toggle(
+                    'active',
+                    (el as HTMLElement).dataset.brushSize === String(size)
+                );
+            });
+        };
+        container.appendChild(btn);
+    }
+}
+
+function shouldShowPaintBrushSizeBar(): boolean {
+    if (!getRolePermissions(currentRole).canEditMap) return false;
+    if (!['paint', 'tileset'].includes(activeMapEditorTab)) return false;
+    if (!mapEditorController) return false;
+
+    const tool = mapEditorController.currentTool;
+    if (tool === 'eraser') return true;
+    if (tool !== 'pencil') return false;
+
+    const id = mapEditorController.selectedTileType;
+    return id >= 0 && TILE_TYPES[id] !== undefined;
+}
+
+function updatePaintBrushSizeBarVisibility(): void {
+    const bar = document.getElementById('paintBrushSizeBar');
+    if (!bar) return;
+    const show = shouldShowPaintBrushSizeBar();
+    bar.hidden = !show;
+    bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+    if (!show) {
+        paintBrushPreview = null;
+    }
+}
+
+function clientToMapTile(e: MouseEvent): { tx: number; ty: number } | null {
+    const rect = canvas.getBoundingClientRect();
+    const zoom = camera.zoom || 1.0;
+    const tx = Math.floor(((e.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
+    const ty = Math.floor(((e.clientY - rect.top) / zoom + camera.y) / TILE_SIZE_SCREEN);
+    if (tx < 0 || tx >= activeMapSize || ty < 0 || ty >= activeMapSize) return null;
+    return { tx, ty };
+}
+
+function drawPaintBrushPreview(
+    ctx: CanvasRenderingContext2D,
+    camX: number,
+    camY: number,
+    centerX: number,
+    centerY: number
+): void {
+    const { w, h } = getBrushFootprint(paintBrushSize);
+    const startX = centerX - Math.floor(w / 2);
+    const startY = centerY - Math.floor(h / 2);
+    const endX = startX + w - 1;
+    const endY = startY + h - 1;
+
+    const blockX = Math.max(0, startX) * TILE_SIZE_SCREEN - camX;
+    const blockY = Math.max(0, startY) * TILE_SIZE_SCREEN - camY;
+    const blockW =
+        (Math.min(activeMapSize - 1, endX) - Math.max(0, startX) + 1) * TILE_SIZE_SCREEN;
+    const blockH =
+        (Math.min(activeMapSize - 1, endY) - Math.max(0, startY) + 1) * TILE_SIZE_SCREEN;
+
+    if (blockW > 0 && blockH > 0) {
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.28)';
+        ctx.fillRect(blockX, blockY, blockW, blockH);
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.95)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(blockX + 1, blockY + 1, blockW - 2, blockH - 2);
+    }
+
+    for (const { x, y } of iterBrushCells(centerX, centerY, paintBrushSize, activeMapSize)) {
+        const sx = x * TILE_SIZE_SCREEN - camX;
+        const sy = y * TILE_SIZE_SCREEN - camY;
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(sx + 0.5, sy + 0.5, TILE_SIZE_SCREEN - 1, TILE_SIZE_SCREEN - 1);
+    }
+}
+
+function updatePaintBrushPreviewFromEvent(e: MouseEvent): void {
+    if (!shouldShowPaintBrushSizeBar()) {
+        paintBrushPreview = null;
+        return;
+    }
+    if (isDraggingMap || isSpacePressed || isMiddleDragging) {
+        paintBrushPreview = null;
+        return;
+    }
+    const activePanel = editorShell?.getActivePanel();
+    if (activePanel !== 'map_editor') {
+        paintBrushPreview = null;
+        return;
+    }
+    paintBrushPreview = clientToMapTile(e);
+}
+
+function placeTileAt(z: number, x: number, y: number, selectedId: number): void {
+    const paintId = resolvePaintSelectionId(selectedId);
+    for (const { x: px, y: py } of iterBrushCells(x, y, paintBrushSize, activeMapSize)) {
+        worldMap[z][py][px] = resolvePaintTileId(paintId, TILE_TYPES);
+    }
+}
+
+function eraseTileAt(z: number, x: number, y: number): void {
+    const emptyId = ENGINE_CONFIG.EMPTY_TILE_ID;
+    for (const { x: px, y: py } of iterBrushCells(x, y, paintBrushSize, activeMapSize)) {
+        worldMap[z][py][px] = emptyId;
+    }
+}
+
 mapEditorController = initMapEditor({
-    tileTypes: TILE_TYPES,
-    onSelectedTileChanged: () => {
-        // Callback quando o tile selecionado muda
+    getTileRegistry: () => TILE_TYPES,
+    onSelectedTileChanged: (id) => {
+        const brushId = findVariantBrushForTileId(id);
+        if (brushId !== undefined && !isVariantBrush(id)) {
+            const tile = TILE_TYPES[id];
+            const label = `${tile?.name || ''}`.toLowerCase();
+            if (label.includes('random') || label.includes('randon') || label.includes('aleat')) {
+                mapEditorController.setSelectedTileType(brushId);
+                toast.info('Pincel aleatório ativado — cada célula sorteia uma variante.');
+                return;
+            }
+            toast.info(
+                'Dica: use o pincel 🎲 «Grama aleatório» na aba Tile para sortear variantes.',
+                5000
+            );
+        } else if (brushId === undefined && TILE_TYPES[id]?.variantGroup) {
+            toast.info(
+                'Este sprite ainda tem só 1 variante. Re-exporte com ✅ Exportar selecionados (strip de 20 frames).',
+                6000
+            );
+        }
+        updateTileBrushStatus(mapEditorController.selectedTileType);
+        updateVariantBrushHint(mapEditorController.selectedTileType);
+        updatePaintBrushSizeBarVisibility();
     },
     onToolChanged: () => {
-        // Callback quando a ferramenta muda
+        updatePaintBrushSizeBarVisibility();
     },
     getEditingFloor: () => editingFloor,
     setEditingFloor: (z) => {
@@ -717,18 +934,63 @@ mapEditorController = initMapEditor({
     saveHistoryState: () => saveState(),
     getWorldMap: () => worldMap,
     getMapSize: () => activeMapSize,
-    isAutoBorderEnabled,
-    isTilePaletteDisabled: (tile) =>
-        isAutoBorderEnabled() && tile.tileRole === 'border',
 });
+
+updateTileBrushStatus(mapEditorController.selectedTileType);
+updateVariantBrushHint(mapEditorController.selectedTileType);
+initPaintBrushSizeBar();
+updatePaintBrushSizeBarVisibility();
+
+let highlightedPortalId: string | null = null;
+let highlightedSpawnId: string | null = null;
 
 // Inicialização do Spawn Editor
 spawnEditorController = initSpawnEditor({
     spawns: worldSpawns,
     onSpawnsChanged: () => {
         respawnEntities();
-    }
+    },
+    onSpawnHighlight: (spawn) => {
+        highlightedSpawnId = spawn?.id ?? null;
+        document.querySelectorAll('.spawn-list-row').forEach((el) => {
+            el.classList.toggle(
+                'is-highlighted',
+                spawn !== null && (el as HTMLElement).dataset.sid === spawn.id
+            );
+        });
+        if (spawn && spawn.z !== editingFloor) {
+            editingFloor = clampFloorZ(spawn.z);
+            updateFloorButtons();
+        }
+    },
+    onSpawnFocus: (spawn) => {
+        focusEditorOnTile(spawn.x, spawn.y, spawn.z);
+        toast.info(`Indo para spawn "${spawn.name}" em (${spawn.x}, ${spawn.y}, ${spawn.z})`);
+    },
+    setEditorTool: (tool) => mapEditorController.setTool(tool),
+    getEditorTool: () => mapEditorController.currentTool,
 });
+
+function focusEditorOnTile(tileX: number, tileY: number, tileZ: number): void {
+    const result = PlayerMovement.teleportPlayer({
+        player,
+        camera,
+        canvas,
+        x: tileX,
+        y: tileY,
+        z: tileZ,
+        TILE_SIZE_SCREEN,
+        MAP_SIZE: activeMapSize,
+        ENGINE_CONFIG,
+        updateFloorButtons,
+        posXEl,
+        posYEl,
+        posZEl,
+    });
+    editingFloor = result.editingFloor;
+    syncGridPlayerVisual(player, TILE_SIZE_SCREEN);
+    resetPortalTriggerState();
+}
 
 // Inicialização do Portal Editor
 portalEditorController = initPortalEditor({
@@ -736,19 +998,47 @@ portalEditorController = initPortalEditor({
     getCurrentMapId: () => currentMapId,
     onPortalsChanged: () => {
         // Portals atualizados — persiste-os junto ao próximo save/export
-    }
+    },
+    onPortalHighlight: (portal) => {
+        highlightedPortalId = portal?.id ?? null;
+        document.querySelectorAll('.portal-list-row').forEach((el) => {
+            el.classList.toggle('is-highlighted', portal !== null && (el as HTMLElement).dataset.pid === portal.id);
+        });
+        if (portal && portal.tileZ !== editingFloor) {
+            editingFloor = clampFloorZ(portal.tileZ);
+            updateFloorButtons();
+        }
+    },
+    onPortalFocus: (portal) => {
+        focusEditorOnTile(portal.tileX, portal.tileY, portal.tileZ);
+        toast.info(`Indo para portal em (${portal.tileX}, ${portal.tileY}, ${portal.tileZ})`);
+    },
 });
 
 // Gerenciador de mapas (modal) — wiring após transitionToMap (ver final do arquivo)
 
-async function reloadTileRegistryAndAutoBorder(): Promise<void> {
-    TILE_TYPES = buildTileRegistry();
-    await refreshAutoBorderManifest(TILE_TYPES);
-    mapEditorController.initEditorUI();
-    const setSelect = document.getElementById('autoBorderSetSelect') as HTMLSelectElement | null;
-    const brushSelect = document.getElementById('autoBorderBrushSelect') as HTMLSelectElement | null;
-    if (setSelect) populateAutoBorderSetSelect(setSelect);
-    if (brushSelect) populateAutoBorderBrushSelect(brushSelect, TILE_TYPES);
+async function reloadTileRegistry(): Promise<void> {
+    TILE_TYPES = await buildTileRegistryAsync();
+    const manifest = await loadVariantGroupManifest();
+    attachVariantBrushes(TILE_TYPES, undefined, manifest);
+
+    for (const mismatch of takeVariantStripMismatches()) {
+        toast.error(
+            `«${mismatch.fileName}»: PNG tem 1 frame (${mismatch.imageWidth}px), mas metadados pedem ${mismatch.expectedFrames}. ` +
+                'No calibrador use ✅ Exportar selecionados (strip horizontal) e recarregue a página.',
+            12000
+        );
+    }
+
+    if (mapEditorController) {
+        mapEditorController.initEditorUI();
+        updateTileBrushStatus(mapEditorController.selectedTileType);
+        updateVariantBrushHint(mapEditorController.selectedTileType);
+    }
+
+    if (import.meta.env.DEV) {
+        void saveTileCatalogToDevPublic(TILE_TYPES);
+    }
 }
 
 async function loadCustomTileProperties() {
@@ -758,80 +1048,18 @@ async function loadCustomTileProperties() {
             const result = await response.json();
             if (result.properties) {
                 mergeCustomTileProperties(result.properties);
+                mergeRuntimeTileProperties(result.properties);
             }
         }
     } catch (err) {
         console.error('[Engine] Erro ao carregar propriedades customizadas dos tiles:', err);
     }
-    await reloadTileRegistryAndAutoBorder();
+    await reloadTileRegistry();
 }
 
-function getEffectivePaintTileId(): number {
-    if (isAutoBorderEnabled()) {
-        const brushId = getAutoBorderPaintTileId(TILE_TYPES);
-        if (brushId !== undefined) return brushId;
-    }
-    return mapEditorController.selectedTileType;
-}
+void loadCustomTileProperties();
 
-function initAutoBorderToolbar(): void {
-    const enabledToggle = document.getElementById('autoBorderEnabledToggle') as HTMLInputElement | null;
-    const setSelect = document.getElementById('autoBorderSetSelect') as HTMLSelectElement | null;
-    const brushSelect = document.getElementById('autoBorderBrushSelect') as HTMLSelectElement | null;
-
-    enabledToggle?.addEventListener('change', () => {
-        setAutoBorderEnabled(enabledToggle.checked);
-        mapEditorController.initEditorUI();
-        if (brushSelect) populateAutoBorderBrushSelect(brushSelect, TILE_TYPES);
-        if (isAutoBorderEnabled() && brushSelect) {
-            if (brushSelect.options.length === 0 || !brushSelect.value) {
-                toast.info(
-                    'Nenhum tile de preenchimento para este conjunto. Importe um tile com papel Preenchimento ou use a máscara 0 do conjunto.'
-                );
-                return;
-            }
-            const brushId = getAutoBorderPaintTileId(TILE_TYPES);
-            if (brushId !== undefined) {
-                mapEditorController.setSelectedTileType(brushId);
-            }
-        }
-    });
-
-    setSelect?.addEventListener('change', () => {
-        setActiveAutoBorderSetId(setSelect.value);
-        if (brushSelect) populateAutoBorderBrushSelect(brushSelect, TILE_TYPES);
-        if (isAutoBorderEnabled()) {
-            const brushId = getAutoBorderPaintTileId(TILE_TYPES);
-            if (brushId !== undefined) mapEditorController.setSelectedTileType(brushId);
-        }
-    });
-
-    brushSelect?.addEventListener('change', () => {
-        if (isAutoBorderEnabled()) {
-            const id = parseInt(brushSelect.value, 10);
-            if (!Number.isNaN(id)) mapEditorController.setSelectedTileType(id);
-        }
-    });
-
-    if (setSelect) populateAutoBorderSetSelect(setSelect);
-    if (brushSelect) populateAutoBorderBrushSelect(brushSelect, TILE_TYPES);
-}
-
-initAutoBorderEditor({
-    getTileRegistry: () => TILE_TYPES,
-    rebuildTileRegistry: () => {
-        void reloadTileRegistryAndAutoBorder();
-    },
-    reloadMapEditorPalette: () => mapEditorController.initEditorUI(),
-    getWorldMap: () => worldMap,
-    getMapSize: () => activeMapSize,
-    getEditingFloor: () => editingFloor,
-    saveHistoryState: () => saveState(),
-});
-
-void loadCustomTileProperties().then(() => initAutoBorderToolbar());
-
-setMapSpriteAfterSaveHandler(() => reloadTileRegistryAndAutoBorder());
+setMapSpriteAfterSaveHandler(() => reloadTileRegistry());
 
 // --- SISTEMA DE ENTRADA E DESENHO ---
 let startX = 0;
@@ -887,24 +1115,47 @@ function paint(e: MouseEvent) {
             return;
         }
 
-        const selectedTileType = getEffectivePaintTileId();
+        const selectedTileType = mapEditorController.selectedTileType;
 
         if (currentTool === 'eyedropper') {
             const picked = worldMap[editingFloor][ty][tx];
             if (picked !== -1) {
-                mapEditorController.setSelectedTileType(picked);
+                const brushId = findVariantBrushForTileId(picked);
+                if (brushId !== undefined) {
+                    mapEditorController.setSelectedTileType(brushId);
+                    const groupKey = getVariantGroupForBrush(brushId);
+                    if (groupKey) {
+                        mapEditorController.scrollToVariantGroup(groupKey);
+                        toast.info(
+                            `Grupo ${formatVariantGroupLabel(groupKey)} — pincel aleatório selecionado`
+                        );
+                    }
+                } else {
+                    mapEditorController.setSelectedTileType(picked);
+                }
                 mapEditorController.setTool('pencil');
             }
         } else if (currentTool === 'pencil') {
-            worldMap[editingFloor][ty][tx] = selectedTileType;
-            runAutoBorderAt(worldMap, tx, ty, editingFloor, TILE_TYPES, activeMapSize);
+            placeTileAt(editingFloor, tx, ty, selectedTileType);
         } else if (currentTool === 'eraser') {
-            worldMap[editingFloor][ty][tx] = -1;
-            runAutoBorderAt(worldMap, tx, ty, editingFloor, TILE_TYPES, activeMapSize);
+            eraseTileAt(editingFloor, tx, ty);
         } else if (currentTool === 'bucket') {
             const target = worldMap[editingFloor][ty][tx];
-            floodFill(worldMap, editingFloor, tx, ty, target, selectedTileType, activeMapSize);
-            runAutoBorderRegion(worldMap, 0, 0, activeMapSize - 1, activeMapSize - 1, editingFloor, TILE_TYPES, activeMapSize);
+            const paintId = resolvePaintSelectionId(selectedTileType);
+            if (isVariantBrush(paintId)) {
+                floodFillRandom(
+                    worldMap,
+                    editingFloor,
+                    tx,
+                    ty,
+                    target,
+                    () => resolvePaintTileId(paintId, TILE_TYPES),
+                    activeMapSize
+                );
+            } else {
+                const resolved = resolvePaintTileId(paintId, TILE_TYPES);
+                floodFill(worldMap, editingFloor, tx, ty, target, resolved, activeMapSize);
+            }
         }
     }
 }
@@ -925,6 +1176,14 @@ function updateCursor() {
 
 canvas.addEventListener('mouseenter', () => {
     updateCursor();
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    updatePaintBrushPreviewFromEvent(e);
+});
+
+canvas.addEventListener('mouseleave', () => {
+    paintBrushPreview = null;
 });
 
 canvas.addEventListener('mousedown', e => {
@@ -1011,15 +1270,9 @@ canvas.addEventListener('mousedown', e => {
         }
         paint(e);
         if(currentTool === 'pencil' || currentTool === 'eraser') {
-            resetLastBorderCellsChanged();
             const onMove = (me: MouseEvent) => paint(me);
             const onStrokeEnd = () => {
                 canvas.removeEventListener('mousemove', onMove);
-                const changed = getLastBorderCellsChanged();
-                if (isAutoBorderEnabled() && changed > 0) {
-                    toast.info(`Auto-borda aplicada em ${changed} célula(s).`);
-                }
-                resetLastBorderCellsChanged();
             };
             canvas.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onStrokeEnd, { once: true });
@@ -1149,26 +1402,13 @@ function applyShape(type: string, x1: number, y1: number, x2: number, y2: number
     const minY = Math.max(0, Math.min(y1, y2));
     const maxY = Math.min(activeMapSize - 1, Math.max(y1, y2));
     
-    const selectedTileType = getEffectivePaintTileId();
+    const selectedTileType = mapEditorController.selectedTileType;
 
     if (type === 'rectangle') {
         for (let y = minY; y <= maxY; y++) {
             for (let x = minX; x <= maxX; x++) {
-                worldMap[editingFloor][y][x] = selectedTileType;
+                placeTileAt(editingFloor, x, y, selectedTileType);
             }
-        }
-        const changed = runAutoBorderRegion(
-            worldMap,
-            minX,
-            minY,
-            maxX,
-            maxY,
-            editingFloor,
-            TILE_TYPES,
-            activeMapSize
-        );
-        if (isAutoBorderEnabled() && changed > 0) {
-            toast.info(`Auto-borda aplicada em ${changed} célula(s).`);
         }
     } else if (type === 'line') {
         let dx = Math.abs(x2 - x1);
@@ -1180,25 +1420,12 @@ function applyShape(type: string, x1: number, y1: number, x2: number, y2: number
         
         while (true) {
             if (cx >= 0 && cx < activeMapSize && cy >= 0 && cy < activeMapSize) {
-                worldMap[editingFloor][cy][cx] = selectedTileType;
+                placeTileAt(editingFloor, cx, cy, selectedTileType);
             }
             if (cx === x2 && cy === y2) break;
             let e2 = 2 * err;
             if (e2 > -dy) { err -= dy; cx += sx; }
             if (e2 < dx) { err += dx; cy += sy; }
-        }
-        const changed = runAutoBorderRegion(
-            worldMap,
-            minX,
-            minY,
-            maxX,
-            maxY,
-            editingFloor,
-            TILE_TYPES,
-            activeMapSize
-        );
-        if (isAutoBorderEnabled() && changed > 0) {
-            toast.info(`Auto-borda aplicada em ${changed} célula(s).`);
         }
     }
 }
@@ -1338,6 +1565,7 @@ function buildCurrentMapDocument() {
         houses: worldHouses,
         spawns: worldSpawns,
         portals: worldPortals,
+        tileRegistry: TILE_TYPES,
     });
 }
 
@@ -1351,7 +1579,7 @@ function exportCurrentToDownload(filename: string) {
     const safeName = filename.endsWith('.json') ? filename : `${filename}.json`;
     const dataStr =
         'data:text/json;charset=utf-8,' +
-        encodeURIComponent(JSON.stringify(doc, null, 2));
+        encodeURIComponent(formatMapDocumentJson(doc));
     const a = document.createElement('a');
     a.setAttribute('href', dataStr);
     a.setAttribute('download', safeName);
@@ -1369,12 +1597,29 @@ async function saveCurrentMapToPublicDev(filename?: string) {
         );
         if (!proceed) return;
     }
-    const file = filename ?? getCurrentMapExportFilename();
+
+    const entry = await ensureMapEntryForSave(currentMapId, activeMapSize);
+    if (!entry) {
+        toast.info('Salvar cancelado. Use Mapas → Novo mapa para registrar um ID antes de pintar.');
+        return;
+    }
+
+    if (currentMapId !== entry.id) {
+        currentMapId = entry.id;
+        updateActiveMapHud();
+    }
+
+    const file =
+        filename ??
+        entry.file.replace(/^.*\//, '') ??
+        `${entry.id}.json`;
     const doc = buildCurrentMapDocument();
     const result = await saveMapDocumentToDevPublic(file, doc);
     if (result.ok) {
-        toast.success(`Mapa salvo em ${result.path}`);
-        console.log(`[Map Dev Save] ${result.path}`);
+        writeStudioLastMapId(entry.id);
+        void saveTileCatalogToDevPublic(TILE_TYPES);
+        toast.success(`Mapa "${entry.name}" salvo em ${result.path}. Ao atualizar, o studio reabre este mapa.`);
+        console.log(`[Map Dev Save] ${result.path} (mapId=${entry.id})`);
     } else {
         toast.error(result.error);
     }
@@ -1440,6 +1685,9 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>) {
     worldPortals.length = 0;
     worldPortals.push(...(loaded.portals || []));
     currentMapId = loaded.mapId;
+    if (loaded.mapId && isStudioMode()) {
+        writeStudioLastMapId(loaded.mapId);
+    }
     mapSpawn = {
         ...loaded.spawn,
         z: clampFloorZ(loaded.spawn.z),
@@ -1453,6 +1701,7 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>) {
     refreshPlayerMovementSpeed();
     respawnEntities();
     portalEditorController?.refresh();
+    spawnEditorController?.refresh();
     history.clear();
     updateHistoryButtons();
     resetPortalTriggerState();
@@ -1485,6 +1734,7 @@ function duplicateFromCurrent(entry: MapEntry) {
         houses: worldHouses,
         spawns: worldSpawns,
         portals: worldPortals,
+        tileRegistry: TILE_TYPES,
     });
     const loaded = loadMapFromJson(doc, mapSpawn);
     registerMap(entry);
@@ -1739,6 +1989,14 @@ function update() {
     gameNet?.syncPositionIfChanged();
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const normalized = hex.replace('#', '').trim();
+    if (normalized.length !== 6) return null;
+    const n = parseInt(normalized, 16);
+    if (Number.isNaN(n)) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
 function draw() {
     ctx.fillStyle = '#0a0b0e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1771,7 +2029,13 @@ function draw() {
                 if (tid !== -1) {
                     const tile = TILE_TYPES[tid];
                     if (tile && tile.image && tile.image.complete) {
-                        ctx.drawImage(tile.image, x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                        drawRegistryTile(
+                            ctx,
+                            tile,
+                            x * TILE_SIZE_SCREEN - camX,
+                            y * TILE_SIZE_SCREEN - camY,
+                            TILE_SIZE_SCREEN
+                        );
                     }
                 }
                 
@@ -1789,20 +2053,55 @@ function draw() {
                     }
                 }
 
-                // Renderiza portais como overlay roxo animado (apenas se a aba 'portals' estiver ativa no editor)
-                {
+                // Portais na aba Portais (andar de edição ativo)
+                if (activeMapEditorTab === 'portals') {
                     const portal = worldPortals.find(p => p.tileX === x && p.tileY === y && p.tileZ === z);
-                    if (portal && z === player.worldZ && activeMapEditorTab === 'portals') {
-                        const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-                        ctx.fillStyle = `rgba(99, 102, 241, ${0.25 + pulse * 0.2})`;
-                        ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
-                        ctx.strokeStyle = `rgba(129, 140, 248, ${0.6 + pulse * 0.3})`;
-                        ctx.lineWidth = 2;
-                        ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
-                        ctx.fillStyle = 'rgba(200,210,255,0.9)';
+                    if (portal && z === editingFloor) {
+                        const isHighlighted = portal.id === highlightedPortalId;
+                        const pulse = (Math.sin(Date.now() / (isHighlighted ? 100 : 400)) + 1) / 2;
+                        if (isHighlighted) {
+                            ctx.fillStyle = `rgba(251, 191, 36, ${0.35 + pulse * 0.35})`;
+                            ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                            ctx.strokeStyle = `rgba(245, 158, 11, ${0.85 + pulse * 0.15})`;
+                            ctx.lineWidth = 3;
+                            ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
+                        } else {
+                            ctx.fillStyle = `rgba(99, 102, 241, ${0.25 + pulse * 0.2})`;
+                            ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                            ctx.strokeStyle = `rgba(129, 140, 248, ${0.6 + pulse * 0.3})`;
+                            ctx.lineWidth = 2;
+                            ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
+                        }
+                        ctx.fillStyle = isHighlighted ? 'rgba(255,251,235,0.95)' : 'rgba(200,210,255,0.9)';
                         ctx.font = `${Math.round(TILE_SIZE_SCREEN * 0.4)}px sans-serif`;
                         ctx.textAlign = 'center';
                         ctx.fillText('🚪', x * TILE_SIZE_SCREEN - camX + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camY + TILE_SIZE_SCREEN / 2 + TILE_SIZE_SCREEN * 0.14);
+                    }
+                }
+
+                if (activeMapEditorTab === 'spawns') {
+                    const spawn = worldSpawns.find((s) => s.x === x && s.y === y && s.z === z);
+                    if (spawn && z === editingFloor) {
+                        const isHighlighted = spawn.id === highlightedSpawnId;
+                        const pulse = (Math.sin(Date.now() / (isHighlighted ? 100 : 400)) + 1) / 2;
+                        const baseColor = getSpawnDisplayColor(spawn);
+                        const rgb = hexToRgb(baseColor);
+                        if (isHighlighted) {
+                            ctx.fillStyle = `rgba(251, 191, 36, ${0.35 + pulse * 0.35})`;
+                            ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                            ctx.strokeStyle = `rgba(245, 158, 11, ${0.9 + pulse * 0.1})`;
+                            ctx.lineWidth = 3;
+                        } else if (rgb) {
+                            ctx.fillStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.2 + pulse * 0.15})`;
+                            ctx.fillRect(x * TILE_SIZE_SCREEN - camX, y * TILE_SIZE_SCREEN - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
+                            ctx.strokeStyle = `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${0.65 + pulse * 0.25})`;
+                            ctx.lineWidth = 2;
+                        }
+                        ctx.strokeRect(x * TILE_SIZE_SCREEN - camX + 1, y * TILE_SIZE_SCREEN - camY + 1, TILE_SIZE_SCREEN - 2, TILE_SIZE_SCREEN - 2);
+                        ctx.fillStyle = isHighlighted ? 'rgba(255,251,235,0.95)' : 'rgba(255,255,255,0.92)';
+                        ctx.font = `${Math.round(TILE_SIZE_SCREEN * 0.38)}px sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.fillText(spawn.type === 'monster' ? '👾' : '👤', x * TILE_SIZE_SCREEN - camX + TILE_SIZE_SCREEN / 2, y * TILE_SIZE_SCREEN - camY + TILE_SIZE_SCREEN / 2 + TILE_SIZE_SCREEN * 0.14);
                     }
                 }
                 
@@ -1855,19 +2154,19 @@ function draw() {
             ctx.globalAlpha = 1.0;
         }
 
+        if (z === editingFloor && paintBrushPreview && shouldShowPaintBrushSizeBar()) {
+            drawPaintBrushPreview(ctx, camX, camY, paintBrushPreview.tx, paintBrushPreview.ty);
+        }
+
         // Desenha todos os NPCs no andar atual
         npcs.forEach(npc => {
             if (npc.worldZ === z) {
                 npc.draw(ctx, { ...camera, x: camX, y: camY } as any, TILE_SIZE_SCREEN);
                 
                 // Desenha o nome do NPC baseado no topo real do sprite (cabeça)
-                const rect = npc.animController.getSourceRect();
-                const sw = rect.sw;
-                const sh = rect.sh;
-                const drawX = npc.worldX - camX + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
-                const drawY = npc.worldY - camY + (TILE_SIZE_SCREEN - sh) + rect.ay;
-                const nameX = drawX + sw / 2 - 10;
-                const nameY = drawY - 6;
+                const placement = npc.getDrawPlacement({ ...camera, x: camX, y: camY, zoom }, TILE_SIZE_SCREEN);
+                const nameX = placement.drawX + placement.drawW / 2 - 10;
+                const nameY = placement.drawY - 6;
 
                 ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
                 ctx.textAlign = 'center';
@@ -1913,7 +2212,8 @@ function draw() {
         }
 
         if (player.worldZ === z) {
-            if (activeCharacterController.isLoaded && activeCharacterController.image) {
+            const hidePlayer = getStudioBoot()?.hidePlayerSprite === true;
+            if (!hidePlayer && activeCharacterController.isLoaded && activeCharacterController.image) {
                 const rect = activeCharacterController.getSourceRect();
                 const sw = rect.sw;
                 const sh = rect.sh;
@@ -1929,13 +2229,14 @@ function draw() {
                     drawX, drawY,
                     sw, sh
                 );
-            } else {
+            } else if (!hidePlayer) {
                 const knight = TILE_TYPES[6];
                 if (knight && knight.image && knight.image.complete) {
                     ctx.drawImage(knight.image, player.worldX - camX, player.worldY - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
                 }
             }
-            
+
+            if (!hidePlayer) {
             // Desenha o nome do jogador acima dele (com borda preta retro estilo RPG/Tibia)
             const pRect = activeCharacterController.getSourceRect();
             const pSw = pRect.sw;
@@ -1958,6 +2259,7 @@ function draw() {
             // Preenchimento azul claro
             ctx.fillStyle = '#38bdf8';
             ctx.fillText(activeCharacterController.config.name, pNameX, pNameY);
+            }
         }
     });
 
@@ -2024,11 +2326,8 @@ function initMapEditorTabSwitching() {
 
         activeMapEditorTab = targetTab;
 
-        if (targetTab === 'paint') {
-            const brushSelect = document.getElementById(
-                'autoBorderBrushSelect'
-            ) as HTMLSelectElement | null;
-            if (brushSelect) populateAutoBorderBrushSelect(brushSelect, TILE_TYPES);
+        if (targetTab === 'spawns') {
+            spawnEditorController?.syncToolButtons();
         }
 
         // Mostra/oculta os conteúdos internos
@@ -2036,6 +2335,8 @@ function initMapEditorTabSwitching() {
             const isTarget = content.id === `mapTabContent_${targetTab}`;
             (content as HTMLElement).style.display = isTarget ? 'block' : 'none';
         });
+
+        updatePaintBrushSizeBarVisibility();
     });
 }
 
@@ -2068,16 +2369,60 @@ if (gameZoomSelect) {
     });
 }
 
-// Oculta a tela de carregamento suavemente após todos os recursos (inclusive as imagens de tiles) carregarem completamente
-window.addEventListener('load', () => {
+// Oculta a tela de carregamento após o boot do editor (window.load pode já ter disparado)
+function dismissLoadingScreen(): void {
     const loadingScreen = document.getElementById('loadingScreen');
-    if (loadingScreen) {
-        loadingScreen.classList.add('fade-out');
-        setTimeout(() => {
-            loadingScreen.remove();
-        }, 500); // Remove do DOM após a transição de fade terminar
+    if (!loadingScreen) return;
+    loadingScreen.classList.add('fade-out');
+    setTimeout(() => {
+        loadingScreen.remove();
+    }, 500);
+}
+
+function initBlankStudioWorld(): void {
+    currentMapId = undefined;
+    worldMetadata = {};
+    worldHouses = {};
+    worldSpawns.length = 0;
+    worldPortals.length = 0;
+    mapSpawn = { x: player.tileX, y: player.tileY, z: player.worldZ };
+    respawnEntities();
+    resetPortalTriggerState();
+    updateActiveMapHud();
+    updateFloorButtons();
+    history.clear();
+    updateHistoryButtons();
+}
+
+async function tryRestoreStudioSession(): Promise<boolean> {
+    const mapId = await resolveStudioMapIdToLoad();
+    if (!mapId) return false;
+
+    try {
+        await transitionToMap(mapId);
+        return true;
+    } catch (err) {
+        console.warn('[Studio] Falha ao restaurar mapa:', mapId, err);
+        return false;
     }
-});
+}
+
+async function bootstrapApp(): Promise<void> {
+    try {
+        await refreshCreatureCatalog();
+
+        if (isStudioMode() && getStudioBoot()?.blankMap) {
+            const restored = await tryRestoreStudioSession();
+            if (!restored) {
+                initBlankStudioWorld();
+            }
+        } else {
+            await initDefaultWorld();
+        }
+    } finally {
+        dismissLoadingScreen();
+    }
+}
 
 async function initDefaultWorld() {
     const entry = MAP_REGISTRY.find((m) => m.id === 'mainland') ?? MAP_REGISTRY[0];
@@ -2093,7 +2438,7 @@ async function initDefaultWorld() {
     }
 }
 
-void initDefaultWorld();
+void bootstrapApp();
 loop();
 
 // --- SISTEMA DE CASAS (HOUSE MANAGER) ---

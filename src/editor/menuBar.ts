@@ -31,10 +31,11 @@ const PANEL_TITLES: Record<FlyoutPanelId, string> = {
 };
 
 export interface EditorShellController {
-    openPanel: (id: FlyoutPanelId) => void;
+    openPanel: (id: FlyoutPanelId, trigger?: HTMLElement) => void;
     closePanel: () => void;
     setEditorMenusVisible: (visible: boolean) => void;
     getActivePanel: () => FlyoutPanelId | null;
+    setPanelOpenHook: (hook: ((id: FlyoutPanelId, trigger?: HTMLElement) => void) | null) => void;
 }
 
 function isFlyoutPanelId(value: string | undefined): value is FlyoutPanelId {
@@ -47,13 +48,14 @@ export function initEditorShell(): EditorShellController {
     const flyoutTitle = document.getElementById('flyoutTitle')!;
     const menubar = document.getElementById('mainMenubar')!;
     let currentPanel: FlyoutPanelId | null = null;
+    let panelOpenHook: ((id: FlyoutPanelId, trigger?: HTMLElement) => void) | null = null;
 
     const sections = flyout.querySelectorAll<HTMLElement>('.flyout-section');
     const editOnlyNodes = document.querySelectorAll<HTMLElement>(
         '[data-requires-edit="true"]'
     );
 
-    function openPanel(id: FlyoutPanelId): void {
+    function openPanel(id: FlyoutPanelId, trigger?: HTMLElement): void {
         if (
             currentPanel === id &&
             workspace.classList.contains('panel-open')
@@ -77,6 +79,8 @@ export function initEditorShell(): EditorShellController {
         menubar.querySelectorAll<HTMLElement>('[data-open-panel]').forEach((btn) => {
             btn.classList.toggle('is-active', btn.dataset.openPanel === id);
         });
+
+        panelOpenHook?.(id, trigger);
     }
 
     function closePanel(): void {
@@ -88,10 +92,18 @@ export function initEditorShell(): EditorShellController {
             .forEach((btn) => btn.classList.remove('is-active'));
     }
 
+    function closeAllSubmenus(): void {
+        menubar.querySelectorAll<HTMLElement>('.menu-submenu').forEach((sub) => {
+            sub.classList.remove('is-open');
+            sub.querySelector<HTMLElement>('.menu-submenu-trigger')?.classList.remove('is-active');
+        });
+    }
+
     function closeAllDropdowns(): void {
         menubar.querySelectorAll<HTMLElement>('.menu-item').forEach((item) => {
             item.classList.remove('is-open');
         });
+        closeAllSubmenus();
     }
 
     /** Um listener no menubar cobre pílulas e itens de dropdown (delegação). */
@@ -105,7 +117,7 @@ export function initEditorShell(): EditorShellController {
             const panelId = panelBtn.dataset.openPanel;
             if (isFlyoutPanelId(panelId)) {
                 closeAllDropdowns();
-                openPanel(panelId);
+                openPanel(panelId, panelBtn);
             }
             return;
         }
@@ -119,6 +131,21 @@ export function initEditorShell(): EditorShellController {
             const wasOpen = item.classList.contains('is-open');
             closeAllDropdowns();
             if (!wasOpen) item.classList.add('is-open');
+            return;
+        }
+
+        const submenuTrigger = target.closest<HTMLElement>('.menu-submenu-trigger');
+        if (submenuTrigger) {
+            e.preventDefault();
+            e.stopPropagation();
+            const submenu = submenuTrigger.closest<HTMLElement>('.menu-submenu');
+            if (!submenu) return;
+            const wasOpen = submenu.classList.contains('is-open');
+            closeAllSubmenus();
+            if (!wasOpen) {
+                submenu.classList.add('is-open');
+                submenuTrigger.classList.add('is-active');
+            }
             return;
         }
 
@@ -159,5 +186,11 @@ export function initEditorShell(): EditorShellController {
         }
     }
 
-    return { openPanel, closePanel, setEditorMenusVisible, getActivePanel: () => currentPanel };
+    return {
+        openPanel,
+        closePanel,
+        setEditorMenusVisible,
+        getActivePanel: () => currentPanel,
+        setPanelOpenHook: (hook) => { panelOpenHook = hook; },
+    };
 }

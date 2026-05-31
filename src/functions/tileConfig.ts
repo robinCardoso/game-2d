@@ -8,8 +8,6 @@ export function normalizeTileFileName(fileName: string): string {
         .replace(/_32x32$/i, '');
 }
 
-export type TileRole = 'fill' | 'border' | 'neutral';
-
 export interface TileProperties {
     walkable: boolean;
     swimable?: boolean;        // É água profunda, exige barco/nadar
@@ -19,13 +17,11 @@ export interface TileProperties {
     stairDirection?: 'up' | 'down'; // Direção da escada
     speedModifier?: number;      // Velocidade do jogador no piso (1.0 = normal)
     nameOverride?: string;       // Nome limpo na interface
-    /** Auto-borda (RME): participa do sistema de preenchimento inteligente */
-    participatesInAutoBorder?: boolean;
-    terrainGroup?: string;
-    tileRole?: TileRole;
-    borderSetId?: string;
-    /** Máscara 4-bit N=1 E=2 S=4 W=8 (vizinhos do terreno vizinho) */
-    borderMask?: number;
+    /** Grupo de variação aleatória (ex.: grass) — tiles com o mesmo valor sorteiam na pintura */
+    variantGroup?: string;
+    /** PNG strip horizontal: N frames de TILE_SIZE lado a lado → registry expande em N tiles */
+    variantStripFrames?: number;
+    assetType?: string;
 }
 
 export const TILE_CONFIG: Record<string, TileProperties> = {
@@ -34,9 +30,6 @@ export const TILE_CONFIG: Record<string, TileProperties> = {
         walkable: true,
         speedModifier: 1.0,
         nameOverride: 'Grama',
-        participatesInAutoBorder: true,
-        terrainGroup: 'grass',
-        tileRole: 'fill',
     },
     'stone_floor': {
         walkable: true,
@@ -53,9 +46,6 @@ export const TILE_CONFIG: Record<string, TileProperties> = {
         swimable: true, // Precisa de barco
         speedModifier: 0.6, // Lento
         nameOverride: 'Água Profunda',
-        participatesInAutoBorder: true,
-        terrainGroup: 'water',
-        tileRole: 'fill',
     },
 
     // Paredes (Walls)
@@ -96,12 +86,6 @@ export const TILE_CONFIG: Record<string, TileProperties> = {
         speedModifier: 1.0,
         nameOverride: 'Escada de Madeira'
     },
-
-    // Personagens
-    'knight': {
-        walkable: false,
-        nameOverride: 'Guerreiro'
-    }
 };
 
 /**

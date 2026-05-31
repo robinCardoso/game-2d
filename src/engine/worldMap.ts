@@ -7,9 +7,20 @@ import {
     sanitizeMapDocumentName,
     sanitizeMetadata,
     sanitizePortals,
+    sanitizeSparseTiles,
+    sanitizeTilesByFloor,
     sanitizeSpawnPoint,
 } from './mapImportSanitizer';
-import type { MapDocument, SpawnPoint, WorldMap } from './types';
+import { groupSparseEntriesByFloor } from './mapDocumentFormat';
+import {
+    enrichTilesWithRefs,
+    buildTileRefsForMap,
+    collectTileIdsFromTilesByFloor,
+    getMapCoordSystem,
+    MAP_FORMAT_ID,
+    MAP_SCHEMA_PATH,
+} from './tileCatalog';
+import type { MapDocument, MapTileEntry, SparseTileEntry, SpawnPoint, TileRegistry, WorldMap } from './types';
 
 const { MAP_SIZE, MIN_FLOOR_Z, MAX_FLOOR_Z, EMPTY_TILE_ID } = ENGINE_CONFIG;
 
@@ -64,34 +75,128 @@ export function cloneWorldMap(source: WorldMap): WorldMap {
     return clone;
 }
 
+export function collectSparseTiles(
+    worldMap: WorldMap,
+    size: number = MAP_SIZE,
+    emptyId: number = EMPTY_TILE_ID
+): SparseTileEntry[] {
+    const tiles: SparseTileEntry[] = [];
+    for (const zKey of Object.keys(worldMap)) {
+        const z = Number(zKey);
+        const floor = worldMap[z];
+        if (!floor) continue;
+        const rows = Math.min(floor.length, size);
+        for (let y = 0; y < rows; y++) {
+            const row = floor[y];
+            if (!row) continue;
+            const cols = Math.min(row.length, size);
+            for (let x = 0; x < cols; x++) {
+                const id = row[x];
+                if (id !== emptyId) {
+                    tiles.push([x, y, z, id]);
+                }
+            }
+        }
+    }
+    return tiles;
+}
+
+export function sparseTilesToWorldMap(
+    tiles: SparseTileEntry[],
+    size: number = MAP_SIZE
+): WorldMap {
+    const map = createEmptyWorldMap(size);
+    for (const [x, y, z, id] of tiles) {
+        if (map[z]?.[y]?.[x] !== undefined) {
+            map[z][y][x] = id;
+        }
+    }
+    return map;
+}
+
+export function tilesByFloorToSparseEntries(
+    tilesByFloor: Record<string, MapTileEntry[]>
+): SparseTileEntry[] {
+    const sparse: SparseTileEntry[] = [];
+    for (const [zKey, entries] of Object.entries(tilesByFloor)) {
+        const z = Number(zKey);
+        for (const { x, y, id } of entries) {
+            sparse.push([x, y, z, id]);
+        }
+    }
+    return sparse;
+}
+
 export function serializeMapDocument(
     worldMap: WorldMap,
-    options: { name?: string; mapId?: string; spawn?: SpawnPoint; size?: number; metadata?: Record<string, import('./types').TileMetadata>; houses?: Record<number, import('./types').HouseData>; spawns?: import('./types').CreatureSpawn[]; portals?: import('./types').PortalData[] } = {}
+    options: {
+        name?: string;
+        mapId?: string;
+        spawn?: SpawnPoint;
+        size?: number;
+        metadata?: Record<string, import('./types').TileMetadata>;
+        houses?: Record<number, import('./types').HouseData>;
+        spawns?: import('./types').CreatureSpawn[];
+        portals?: import('./types').PortalData[];
+        tileRegistry?: TileRegistry;
+    } = {}
 ): MapDocument {
     const size = options.size ?? MAP_SIZE;
-    const floors: Record<string, number[][]> = {};
-    for (const z of Object.keys(worldMap).map(Number)) {
-        floors[String(z)] = worldMap[z];
-    }
-    return {
+    const tilesRaw = groupSparseEntriesByFloor(collectSparseTiles(worldMap, size));
+    const doc: MapDocument = {
         version: 1,
+        format: MAP_FORMAT_ID,
+        schema: MAP_SCHEMA_PATH,
+        coordSystem: getMapCoordSystem(),
         name: options.name ?? 'sem_nome',
         mapId: options.mapId,
         size,
         tileSize: ENGINE_CONFIG.TILE_SIZE,
-        floors,
         metadata: options.metadata ?? {},
         houses: options.houses ?? {},
         spawns: options.spawns ?? [],
         portals: options.portals ?? [],
         spawn: options.spawn ?? { x: 50, y: 50, z: 0 },
     };
+
+    if (Object.keys(tilesRaw).length > 0) {
+        doc.tiles = options.tileRegistry
+            ? enrichTilesWithRefs(tilesRaw, options.tileRegistry)
+            : tilesRaw;
+
+        if (options.tileRegistry) {
+            const usedIds = collectTileIdsFromTilesByFloor(doc.tiles);
+            const refs = buildTileRefsForMap(options.tileRegistry, usedIds);
+            if (Object.keys(refs).length > 0) {
+                doc.tileRefs = refs;
+            }
+        }
+    }
+
+    return doc;
 }
 
 export function deserializeMapDocument(doc: MapDocument): WorldMap {
     if (doc.version !== 1) {
         throw new Error(`Versão de mapa não suportada: ${doc.version}`);
     }
+
+    if (doc.tiles && typeof doc.tiles === 'object') {
+        const tiles = sanitizeTilesByFloor(doc.tiles, doc.size);
+        if (Object.keys(tiles).length > 0) {
+            return sparseTilesToWorldMap(tilesByFloorToSparseEntries(tiles), doc.size);
+        }
+    }
+
+    if (Array.isArray(doc.sparseTiles)) {
+        const tiles = sanitizeSparseTiles(doc.sparseTiles, doc.size);
+        return sparseTilesToWorldMap(tiles, doc.size);
+    }
+
+    if (!doc.floors) {
+        return createEmptyWorldMap(doc.size);
+    }
+
     const map: WorldMap = {};
     for (const [zKey, grid] of Object.entries(doc.floors)) {
         map[Number(zKey)] = grid;
@@ -128,7 +233,7 @@ export function loadMapFromJson(
 
     const obj = raw as Record<string, unknown>;
 
-    if (obj.version === 1 && obj.floors) {
+    if (obj.version === 1 && (obj.floors || obj.sparseTiles || obj.tiles)) {
         const doc = obj as unknown as MapDocument;
 
         const mapSize = clampImportMapSize(doc.size);

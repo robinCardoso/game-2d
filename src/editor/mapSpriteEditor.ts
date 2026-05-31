@@ -2,11 +2,11 @@ import { toast, popup } from '../utils/popup';
 import { removeChromaKey } from '../utils/imageProcessor';
 import { openCharacterCalibrator } from './characterCalibratorModal';
 import {
-    buildAllTileRolesHelpHtml,
-    getTileRoleHelpText,
-    TILE_ROLE_TITLES,
-    normalizeTileRoleHelpKey,
-} from './autoBorderHelp';
+    calibrationResultToBatchGrid,
+    openMapSpriteBatchExportModal,
+} from './mapSpriteBatchExport';
+import { renderFolderTree } from './folderTree';
+import { ENGINE_CONFIG } from '../engine/config';
 
 let afterSaveSpriteHandler: (() => void | Promise<void>) | undefined;
 
@@ -20,16 +20,14 @@ interface MapSpriteListEntry {
         walkable?: boolean;
         speedModifier?: number;
         isStair?: boolean;
-        participatesInAutoBorder?: boolean;
-        tileRole?: string;
-        terrainGroup?: string;
-        borderSetId?: string;
-        borderMask?: number;
+        variantGroup?: string;
+        variantStripFrames?: number;
     };
 }
 
 const TERRAIN_CATEGORY_HINTS = ['ground', 'nature', 'walls', 'grass', 'water', 'borders'];
 const ITEM_CATEGORY_HINTS = ['decor', 'props', 'furniture'];
+const MAP_SPRITES_DIR_LABEL = 'tiles/maps';
 
 /** Sanitiza subpasta (espelha regras do servidor em vite.config.ts). */
 export function sanitizeMapSpriteCategory(raw: string): string {
@@ -90,23 +88,17 @@ export function initMapSpriteEditor() {
     const assetTypeSelect = document.getElementById('mapSpriteAssetTypeSelect') as HTMLSelectElement;
     const categoryInput = document.getElementById('mapSpriteCategoryInput') as HTMLInputElement;
     const categoryDatalist = document.getElementById('mapSpriteCategoryList') as HTMLDataListElement | null;
+    const categoryTreeEl = document.getElementById('mapSpriteCategoryTree') as HTMLDivElement | null;
     const propertiesBlock = document.getElementById('mapSpriteTerrainPropertiesBlock') as HTMLDivElement;
-    const autoBorderBlock = document.getElementById('mapSpriteAutoBorderBlock') as HTMLDivElement;
-    const autoBorderToggle = document.getElementById('mapSpriteAutoBorderToggle') as HTMLInputElement;
-    const autoBorderFields = document.getElementById('mapSpriteAutoBorderFields') as HTMLDivElement;
-    const tileRoleSelect = document.getElementById('mapSpriteTileRoleSelect') as HTMLSelectElement;
-    const terrainGroupInput = document.getElementById('mapSpriteTerrainGroupInput') as HTMLInputElement;
-    const borderOnlyFields = document.getElementById('mapSpriteBorderOnlyFields') as HTMLDivElement;
-    const borderSetIdInput = document.getElementById('mapSpriteBorderSetIdInput') as HTMLInputElement;
-    const borderMaskInput = document.getElementById('mapSpriteBorderMaskInput') as HTMLInputElement;
-    const tileRoleHelpEl = document.getElementById('mapSpriteTileRoleHelp');
-    const tileRolesHelpAllEl = document.getElementById('mapSpriteTileRolesHelpAll');
 
     // Propriedades físicas
     const walkableToggle = document.getElementById('mapSpriteWalkableToggle') as HTMLInputElement;
     const speedRange = document.getElementById('mapSpriteSpeedRange') as HTMLInputElement;
     const speedValSpan = document.getElementById('mapSpriteSpeedVal') as HTMLSpanElement;
     const stairToggle = document.getElementById('mapSpriteStairToggle') as HTMLInputElement;
+    const variantGroupInput = document.getElementById('mapSpriteVariantGroupInput') as HTMLInputElement | null;
+    const variantGroupExclude = document.getElementById('mapSpriteVariantGroupExclude') as HTMLInputElement | null;
+    const variantGroupDatalist = document.getElementById('mapSpriteVariantGroupList') as HTMLDataListElement | null;
 
     // Ações
     const loadBtn = document.getElementById('loadMapSpriteBtn');
@@ -149,19 +141,63 @@ export function initMapSpriteEditor() {
     let serverSpritesList: MapSpriteListEntry[] = [];
     let serverFoldersList: string[] = [];
 
+    function refreshVariantGroupDatalist(): void {
+        if (!variantGroupDatalist) return;
+        const known = new Set<string>(['grass', 'stone', 'dirt', 'sand']);
+        for (const sprite of serverSpritesList) {
+            const group = sprite.properties?.variantGroup?.trim();
+            if (group) known.add(group);
+        }
+        variantGroupDatalist.innerHTML = '';
+        Array.from(known)
+            .sort((a, b) => a.localeCompare(b, 'pt'))
+            .forEach((group) => {
+                const opt = document.createElement('option');
+                opt.value = group;
+                variantGroupDatalist.appendChild(opt);
+            });
+    }
+
+    function sanitizeVariantGroup(raw: string): string {
+        return raw
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '_')
+            .replace(/[^a-z0-9_-]/g, '');
+    }
+
+    function syncVariantGroupFieldsFromProperties(properties?: MapSpriteListEntry['properties']): void {
+        if (!variantGroupInput || !variantGroupExclude) return;
+        const group = properties?.variantGroup?.trim() ?? '';
+        variantGroupInput.value = group;
+        variantGroupExclude.checked = !group;
+        variantGroupInput.disabled = variantGroupExclude.checked;
+    }
+
     function refreshCategoryDatalist(): void {
-        if (!categoryDatalist) return;
-        categoryDatalist.innerHTML = '';
         const categories = collectCategoriesForAssetType(
             assetTypeSelect.value,
             serverSpritesList,
             serverFoldersList
         );
-        for (const cat of categories) {
-            const opt = document.createElement('option');
-            opt.value = cat;
-            categoryDatalist.appendChild(opt);
+
+        if (categoryDatalist) {
+            categoryDatalist.innerHTML = '';
+            for (const cat of categories) {
+                const opt = document.createElement('option');
+                opt.value = cat;
+                categoryDatalist.appendChild(opt);
+            }
         }
+
+        if (categoryTreeEl) {
+            categoryTreeEl.innerHTML = renderFolderTree(
+                MAP_SPRITES_DIR_LABEL,
+                serverFoldersList
+            );
+        }
+
+        refreshVariantGroupDatalist();
     }
 
     async function reloadServerMapSpritesList(): Promise<boolean> {
@@ -206,7 +242,15 @@ export function initMapSpriteEditor() {
                     categories[catName].forEach((sprite) => {
                         const opt = document.createElement('option');
                         opt.value = sprite.relativePath;
-                        opt.innerText = sprite.name;
+                        const groupBadge = sprite.properties?.variantGroup
+                            ? ` 🎲 ${sprite.properties.variantGroup}`
+                            : '';
+                        const stripBadge =
+                            sprite.properties?.variantStripFrames &&
+                            sprite.properties.variantStripFrames > 1
+                                ? ` · ${sprite.properties.variantStripFrames} var.`
+                                : '';
+                        opt.innerText = `${sprite.name}${stripBadge}${groupBadge}`;
                         group.appendChild(opt);
                     });
                     serverSelect.appendChild(group);
@@ -226,6 +270,12 @@ export function initMapSpriteEditor() {
     });
 
     void reloadServerMapSpritesList();
+
+    categoryTreeEl?.addEventListener('click', (e) => {
+        const el = (e.target as HTMLElement).closest('[data-folder-path]') as HTMLElement | null;
+        if (!el?.dataset.folderPath) return;
+        categoryInput.value = el.dataset.folderPath;
+    });
 
     // Evento de seleção de sprite existente
     serverSelect?.addEventListener('change', () => {
@@ -250,14 +300,7 @@ export function initMapSpriteEditor() {
             speedRange.value = (sprite.properties.speedModifier ?? 1.0).toString();
             if (speedValSpan) speedValSpan.innerText = parseFloat(speedRange.value).toFixed(1);
             stairToggle.checked = sprite.properties.isStair ?? false;
-            if (autoBorderToggle) {
-                autoBorderToggle.checked = !!sprite.properties.participatesInAutoBorder;
-            }
-            if (tileRoleSelect) tileRoleSelect.value = sprite.properties.tileRole ?? 'fill';
-            if (terrainGroupInput) terrainGroupInput.value = sprite.properties.terrainGroup ?? '';
-            if (borderSetIdInput) borderSetIdInput.value = sprite.properties.borderSetId ?? '';
-            if (borderMaskInput) borderMaskInput.value = String(sprite.properties.borderMask ?? 0);
-            syncAutoBorderFieldsVisibility();
+            syncVariantGroupFieldsFromProperties(sprite.properties);
         }
 
         // Carrega a imagem física
@@ -280,53 +323,24 @@ export function initMapSpriteEditor() {
         };
     });
 
-    function syncAutoBorderUiVisibility(): void {
+    function syncTerrainPropertiesVisibility(): void {
         const isTerrain = assetTypeSelect.value === 'terrain';
         if (propertiesBlock) propertiesBlock.style.display = isTerrain ? 'block' : 'none';
-        if (autoBorderBlock) autoBorderBlock.style.display = isTerrain ? 'block' : 'none';
     }
 
-    function syncAutoBorderRoleHelp(): void {
-        if (!tileRoleHelpEl) return;
-        const role = normalizeTileRoleHelpKey(tileRoleSelect?.value ?? 'fill');
-        tileRoleHelpEl.innerHTML = `<strong>${TILE_ROLE_TITLES[role]}</strong> — ${getTileRoleHelpText(role)}`;
-    }
-
-    function syncAutoBorderFieldsVisibility(): void {
-        const on = autoBorderToggle?.checked ?? false;
-        if (autoBorderFields) autoBorderFields.style.display = on ? 'block' : 'none';
-        const isBorder = tileRoleSelect?.value === 'border';
-        if (borderOnlyFields) borderOnlyFields.style.display = on && isBorder ? 'block' : 'none';
-        if (on) syncAutoBorderRoleHelp();
-    }
-
-    if (tileRolesHelpAllEl) {
-        tileRolesHelpAllEl.innerHTML = buildAllTileRolesHelpHtml();
-    }
-
-    const mapToolbarRolesHelp = document.getElementById('autoBorderMapToolbarRolesHelp');
-    if (mapToolbarRolesHelp) {
-        mapToolbarRolesHelp.innerHTML = buildAllTileRolesHelpHtml();
-    }
-    const autoBorderTabRolesHelp = document.getElementById('autoBorderTabRolesHelp');
-    if (autoBorderTabRolesHelp) {
-        autoBorderTabRolesHelp.innerHTML = buildAllTileRolesHelpHtml();
-    }
-
-    autoBorderToggle?.addEventListener('change', syncAutoBorderFieldsVisibility);
-    tileRoleSelect?.addEventListener('change', () => {
-        syncAutoBorderFieldsVisibility();
-        syncAutoBorderRoleHelp();
+    variantGroupExclude?.addEventListener('change', () => {
+        if (!variantGroupInput || !variantGroupExclude) return;
+        variantGroupInput.disabled = variantGroupExclude.checked;
+        if (variantGroupExclude.checked) {
+            variantGroupInput.value = '';
+        }
     });
 
-    // Alterna visualização de propriedades baseado no tipo de asset
     assetTypeSelect?.addEventListener('change', () => {
-        syncAutoBorderUiVisibility();
+        syncTerrainPropertiesVisibility();
         refreshCategoryDatalist();
     });
-    syncAutoBorderUiVisibility();
-    syncAutoBorderFieldsVisibility();
-    syncAutoBorderRoleHelp();
+    syncTerrainPropertiesVisibility();
 
     // Atualiza valor do slider de velocidade
     speedRange?.addEventListener('input', () => {
@@ -426,9 +440,9 @@ export function initMapSpriteEditor() {
             async (result: any) => {
                 const selCol = result.selectedFrameCol ?? 0;
                 const selRow = result.selectedFrameRow ?? 0;
-                const targetSize = 64; // Tamanho nativo da grade da engine (TILE_SIZE)
+                const targetSize = ENGINE_CONFIG.TILE_SIZE;
 
-                // Cria um canvas temporário para recortar e redimensionar o frame selecionado para 64x64
+                // Recorta o frame selecionado e redimensiona para TILE_SIZE
                 const cropCanvas = document.createElement('canvas');
                 cropCanvas.width = targetSize;
                 cropCanvas.height = targetSize;
@@ -463,7 +477,7 @@ export function initMapSpriteEditor() {
                     offsetXInput.value = '0';
                     offsetYInput.value = '0';
                     
-                    toast.success(`Recortado e redimensionado automaticamente para 64x64! (Col ${selCol + 1}, Linha ${selRow + 1})`);
+                    toast.success(`Recortado para ${targetSize}×${targetSize} px! (Col ${selCol + 1}, Linha ${selRow + 1})`);
                 } else {
                     frameWidthInput.value = result.frameWidth.toString();
                     frameHeightInput.value = result.frameHeight.toString();
@@ -472,7 +486,40 @@ export function initMapSpriteEditor() {
                     toast.success('Grade calibrada com sucesso!');
                 }
             },
-            { mode: 'map', initialGridCols: 1, initialGridRows: 1 }
+            {
+                mode: 'map',
+                initialGridCols: 1,
+                initialGridRows: 1,
+                onBatchExport: (result, scope) => {
+                    if (!processedImage) return;
+                    const calibration = calibrationResultToBatchGrid(processedImage, result);
+                    const rawPrefix = nameInput.value.trim() || 'grama';
+                    openMapSpriteBatchExportModal(
+                        processedImage,
+                        calibration,
+                        {
+                            namePrefix: rawPrefix,
+                            category: categoryInput.value.trim() || 'grass',
+                            variantGroup: variantGroupExclude?.checked
+                                ? ''
+                                : (variantGroupInput?.value.trim() || 'grass'),
+                            walkable: walkableToggle.checked,
+                            speedModifier: parseFloat(speedRange.value) || 1,
+                            excludeVariantGroup: variantGroupExclude?.checked ?? false,
+                        },
+                        async () => {
+                            await reloadServerMapSpritesList();
+                            if (afterSaveSpriteHandler) {
+                                await afterSaveSpriteHandler();
+                            }
+                        },
+                        {
+                            scope,
+                            selectedFrames: result.selectedFrames,
+                        }
+                    );
+                },
+            }
         );
     });
 
@@ -494,31 +541,22 @@ export function initMapSpriteEditor() {
             const originalText = saveServerBtn.innerText;
             saveServerBtn.innerText = '⌛ Gravando...';
 
-            const tileRole = tileRoleSelect?.value ?? 'fill';
-            if (autoBorderToggle?.checked && tileRole === 'border') {
-                const setId = borderSetIdInput?.value.trim();
-                const mask = parseInt(borderMaskInput?.value ?? '', 10);
-                if (!setId || Number.isNaN(mask) || mask < 0 || mask > 15) {
-                    toast.error('Tiles de borda precisam de conjunto e máscara (0–15).');
-                    (saveServerBtn as HTMLButtonElement).disabled = false;
-                    saveServerBtn!.innerText = '💾 Salvar no Servidor';
-                    return;
-                }
-            }
-
             const properties: Record<string, unknown> = {
                 walkable: walkableToggle.checked,
                 speedModifier: parseFloat(speedRange.value) || 1.0,
                 isStair: stairToggle.checked,
             };
 
-            if (assetTypeSelect.value === 'terrain' && autoBorderToggle?.checked) {
-                properties.participatesInAutoBorder = true;
-                properties.tileRole = tileRole;
-                properties.terrainGroup = terrainGroupInput?.value.trim() || undefined;
-                if (tileRole === 'border') {
-                    properties.borderSetId = borderSetIdInput?.value.trim();
-                    properties.borderMask = parseInt(borderMaskInput?.value ?? '0', 10);
+            if (
+                assetTypeSelect.value === 'terrain' &&
+                variantGroupInput &&
+                variantGroupExclude &&
+                !variantGroupExclude.checked
+            ) {
+                const group = sanitizeVariantGroup(variantGroupInput.value);
+                if (group) {
+                    properties.variantGroup = group;
+                    variantGroupInput.value = group;
                 }
             }
 

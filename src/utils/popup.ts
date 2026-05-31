@@ -127,8 +127,8 @@ export const popup = {
                     </div>
                     <div class="custom-modal-body">${message}</div>
                     <div class="custom-modal-footer">
-                        <button class="custom-modal-btn secondary" id="modalCancelBtn">Cancelar</button>
-                        <button class="custom-modal-btn primary" id="modalOkBtn">Confirmar</button>
+                        <button class="custom-modal-btn secondary" id="modalCancelBtn">Não</button>
+                        <button class="custom-modal-btn primary" id="modalOkBtn">Sim</button>
                     </div>
                 </div>
             `;

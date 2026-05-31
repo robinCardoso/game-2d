@@ -13,6 +13,7 @@ import {
     type CollisionQueryContext,
     type WorldMap,
 } from '../engine';
+import { drawRegistryTile } from '../engine/tileDraw';
 import { SpriteAnimationController } from '../character/spriteAnimation';
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import {
@@ -23,6 +24,8 @@ import {
 import { PlayerMovement } from '../movement/playerMovement';
 import { NpcAI } from '../character/npcAI';
 import { GameEntity } from '../character/entity';
+import { respawnEntitiesFromSpawns } from '../character/respawnEntities';
+import { loadCreaturePresets } from '../editor/creaturePresets';
 import { createDefaultCharacterSpeed, type CharacterSpeedState } from '../character/movementSpeed';
 import { SpeedBuffManager } from '../character/speedBuffs';
 import { resolveFullStepDuration } from '../character/characterMovement';
@@ -143,21 +146,11 @@ function updateActiveMapHud(): void {
 }
 
 function respawnEntities(): void {
-    npcs.length = 0;
-    worldSpawns.forEach((spawn) => {
-        if (spawn.x < 0 || spawn.y < 0 || spawn.x >= activeMapSize || spawn.y >= activeMapSize) return;
-        const config = { ...activeCharacterController.config, name: spawn.name };
-        const entity = new GameEntity(
-            spawn.id,
-            spawn.name,
-            config,
-            spawn.x,
-            spawn.y,
-            spawn.z,
-            5,
-            spawn.type
-        );
-        npcs.push(entity);
+    respawnEntitiesFromSpawns({
+        spawns: worldSpawns,
+        npcs,
+        mapSize: activeMapSize,
+        tileSize: TILE_SIZE_SCREEN,
     });
 }
 
@@ -343,11 +336,11 @@ function draw(): void {
                 if (tid !== undefined && tid !== -1) {
                     const tile = TILE_TYPES[tid];
                     if (tile?.image?.complete) {
-                        ctx.drawImage(
-                            tile.image,
+                        drawRegistryTile(
+                            ctx,
+                            tile,
                             x * TILE_SIZE_SCREEN - camera.x,
                             y * TILE_SIZE_SCREEN - camera.y,
-                            TILE_SIZE_SCREEN,
                             TILE_SIZE_SCREEN
                         );
                     }
@@ -475,6 +468,7 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     if (!entry) throw new Error('Mapa inicial não encontrado.');
 
     showLoading('Carregando mundo…');
+    await loadCreaturePresets();
     const loaded = await loadMapFile(entry);
     applyLoadedMap({ ...loaded, mapId: loaded.mapId ?? entry.id });
 

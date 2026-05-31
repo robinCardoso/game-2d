@@ -35,14 +35,21 @@
 
 ## Tiles
 
-- Tamanho global: `ENGINE_CONFIG.TILE_SIZE` (**64** px) em `engine/config.ts`
-- Assets PNG em `tiles/**` devem ser **64×64** (escadas: sufixo `_64x64`, ex. `marble_stairs_up_64x64.png`)
+- Tamanho global: `ENGINE_CONFIG.TILE_SIZE` (**32** px) em `engine/config.ts`
+- Assets PNG em `tiles/**`; variant strips = largura `N × TILE_SIZE`
 - Colisão: hitbox proporcional via `collisionHitboxSize()`
+- Catálogo para mapas/IA: `public/tile_catalog.json` (ver [map-format.md](./map-format.md))
 
 ## Formato de mapa (`MapDocument` v1)
 
-- `version`, `name`, `size`, `tileSize`, `floors`, `spawn`
-- Export/import pelo editor usa `serializeMapDocument` / `deserializeMapDocument`
+Documentação completa: **[docs/map-format.md](./map-format.md)** (formato esparso, catálogo de tiles, guia para IA).
+
+Resumo:
+
+- **Formato preferido:** `game-2d/map-sparse-v1` — só células pintadas em `tiles[z]`, não grade densa
+- **Artefatos:** `public/maps/*.json`, `public/maps/map.schema.json`, `public/tile_catalog.json`
+- **Export/import:** `serializeMapDocument` / `loadMapFromJson` em `src/engine/worldMap.ts`
+- **Legado:** `floors` (grade densa) e `sparseTiles` (`[x,y,z,id][]`) ainda carregam
 - Cliente futuro carrega o mesmo JSON (fetch ou IndexedDB de mapas publicados)
 
 ## O que NÃO vai na engine
@@ -59,7 +66,7 @@
 
 ## Roadmap engine (antes do cliente jogador)
 
-1. ✅ `worldMap` + `MapDocument` v1
+1. ✅ `worldMap` + `MapDocument` v1 (esparso + legado)
 2. ✅ Colisão e escadas em `engine/collision.ts`
 3. ✅ Andares -7 … +7
 3. ⬜ `facing` (N/S/E/O) no grid — ver `docs/character-sprite-engine.md`

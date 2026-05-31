@@ -1,12 +1,14 @@
+import { ENGINE_CONFIG } from '../engine/config';
 import { SpriteAnimationController, CharacterSpriteConfig, CharacterState, Direction } from './spriteAnimation';
+import { getSpriteTilePlacement } from './spriteDraw';
 
 export class GameEntity {
     id: string;
     name: string;
     tileX: number;
     tileY: number;
-    worldX: number;
-    worldY: number;
+    worldX: number = 0;
+    worldY: number = 0;
     worldZ: number;
     animController: SpriteAnimationController;
     type: 'monster' | 'npc';
@@ -17,7 +19,17 @@ export class GameEntity {
     dialogueText: string | null = null;
     dialogueTimer: number = 0;
 
-    constructor(id: string, name: string, config: CharacterSpriteConfig, tileX: number, tileY: number, z: number, maxRadius = 3, type: 'monster' | 'npc' = 'npc') {
+    constructor(
+        id: string,
+        name: string,
+        config: CharacterSpriteConfig,
+        tileX: number,
+        tileY: number,
+        z: number,
+        maxRadius = 3,
+        type: 'monster' | 'npc' = 'npc',
+        tileSize: number = ENGINE_CONFIG.TILE_SIZE
+    ) {
         this.id = id;
         this.name = name;
         this.tileX = tileX;
@@ -25,11 +37,16 @@ export class GameEntity {
         this.spawnX = tileX;
         this.spawnY = tileY;
         this.maxRadius = maxRadius;
-        this.worldX = tileX * 64; // TILE_SIZE
-        this.worldY = tileY * 64;
+        this.syncWorldToTile(tileSize);
         this.worldZ = z;
         this.type = type;
         this.animController = new SpriteAnimationController(config);
+    }
+
+    /** Alinha posição em pixels ao tile lógico (grid fixo; sprite pode ser maior/menor). */
+    syncWorldToTile(tileSize: number = ENGINE_CONFIG.TILE_SIZE): void {
+        this.worldX = this.tileX * tileSize;
+        this.worldY = this.tileY * tileSize;
     }
 
     setState(state: CharacterState) {
@@ -57,22 +74,25 @@ export class GameEntity {
     draw(ctx: CanvasRenderingContext2D, camera: { x: number, y: number }, tileSize: number) {
         if (!this.animController.isLoaded || !this.animController.image) return;
         const rect = this.animController.getSourceRect();
-        
-        const sw = rect.sw;
-        const sh = rect.sh;
-        // Alinhamento Centro-Inferior (Bottom-Center)
-        const rawX = this.worldX - camera.x + (tileSize - sw) / 2 + rect.ax;
-        const rawY = this.worldY - camera.y + (tileSize - sh) + rect.ay;
-        const zoom = (camera as any).zoom || 1.0;
-        const drawX = Math.round(rawX * zoom) / zoom;
-        const drawY = Math.round(rawY * zoom) / zoom;
+        const drawScale = this.animController.config.drawScale ?? 1;
+        const zoom = (camera as { zoom?: number }).zoom || 1.0;
+        const placement = getSpriteTilePlacement(
+            this.worldX,
+            this.worldY,
+            camera.x,
+            camera.y,
+            tileSize,
+            rect,
+            drawScale,
+            zoom
+        );
         
         ctx.globalAlpha = 1.0;
         ctx.drawImage(
             this.animController.image,
-            rect.sx, rect.sy, sw, sh - 0.5,
-            drawX, drawY,
-            sw, sh
+            rect.sx, rect.sy, rect.sw, rect.sh - 0.5,
+            placement.drawX, placement.drawY,
+            placement.drawW, placement.drawH
         );
 
         // Desenha balão de fala se houver texto ativo
@@ -111,5 +131,22 @@ export class GameEntity {
             ctx.textBaseline = 'middle';
             ctx.fillText(this.dialogueText, this.worldX - camera.x + tileSize / 2, by + bubbleH / 2);
         }
+    }
+
+    /** Posição de desenho do sprite (útil para nome flutuante). */
+    getDrawPlacement(camera: { x: number; y: number; zoom?: number }, tileSize: number) {
+        const rect = this.animController.getSourceRect();
+        const drawScale = this.animController.config.drawScale ?? 1;
+        const zoom = camera.zoom ?? 1;
+        return getSpriteTilePlacement(
+            this.worldX,
+            this.worldY,
+            camera.x,
+            camera.y,
+            tileSize,
+            rect,
+            drawScale,
+            zoom
+        );
     }
 }

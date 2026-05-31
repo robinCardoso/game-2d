@@ -6,7 +6,16 @@
 import { ENGINE_CONFIG } from './config';
 import { ZoneType } from './zones';
 import { getKnownMapIds } from './mapRegistry';
-import type { CreatureSpawn, HouseData, PortalData, SpawnPoint, TileMetadata, WorldMap } from './types';
+import type {
+    CreatureSpawn,
+    HouseData,
+    MapTileEntry,
+    PortalData,
+    SparseTileEntry,
+    SpawnPoint,
+    TileMetadata,
+    WorldMap,
+} from './types';
 
 const { MAP_SIZE, MIN_FLOOR_Z, MAX_FLOOR_Z, EMPTY_TILE_ID } = ENGINE_CONFIG;
 
@@ -38,6 +47,94 @@ export function sanitizeMapDocumentName(name: unknown): string {
     if (typeof name !== 'string') return 'importado';
     const t = name.trim().slice(0, MAX_MAP_NAME_CHARS);
     return t.length ? t : 'importado';
+}
+
+const MAX_SPARSE_TILES = 500_000;
+
+export function sanitizeSparseTiles(raw: unknown, mapSize: number): SparseTileEntry[] {
+    if (!Array.isArray(raw)) return [];
+
+    const maxCoord = Math.max(0, mapSize - 1);
+    const out: SparseTileEntry[] = [];
+
+    for (const entry of raw) {
+        if (out.length >= MAX_SPARSE_TILES) {
+            console.warn(`[Engine] sparseTiles truncado em ${MAX_SPARSE_TILES} entradas.`);
+            break;
+        }
+        if (!Array.isArray(entry) || entry.length < 4) continue;
+
+        const x = Math.floor(Number(entry[0]));
+        const y = Math.floor(Number(entry[1]));
+        const z = Math.floor(Number(entry[2]));
+        const id = Math.floor(Number(entry[3]));
+
+        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z) || !Number.isFinite(id)) {
+            continue;
+        }
+        if (x < 0 || x > maxCoord || y < 0 || y > maxCoord) continue;
+        if (z < MIN_FLOOR_Z || z > MAX_FLOOR_Z) continue;
+        if (id < -2 || id > MAX_TILE_ID) continue;
+
+        out.push([x, y, z, id]);
+    }
+
+    return out;
+}
+
+export function sanitizeTilesByFloor(
+    raw: unknown,
+    mapSize: number
+): Record<string, MapTileEntry[]> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+    const maxCoord = Math.max(0, mapSize - 1);
+    const out: Record<string, MapTileEntry[]> = {};
+    let total = 0;
+
+    for (const [zKey, entries] of Object.entries(raw as Record<string, unknown>)) {
+        const z = Math.floor(Number(zKey));
+        if (!Number.isFinite(z) || z < MIN_FLOOR_Z || z > MAX_FLOOR_Z) continue;
+        if (!Array.isArray(entries)) continue;
+
+        const floorTiles: MapTileEntry[] = [];
+        for (const entry of entries) {
+            if (total >= MAX_SPARSE_TILES) {
+                console.warn(`[Engine] tiles truncado em ${MAX_SPARSE_TILES} entradas.`);
+                break;
+            }
+
+            let x: number;
+            let y: number;
+            let id: number;
+
+            if (Array.isArray(entry) && entry.length >= 3) {
+                x = Math.floor(Number(entry[0]));
+                y = Math.floor(Number(entry[1]));
+                id = Math.floor(Number(entry[2]));
+            } else if (entry && typeof entry === 'object') {
+                const obj = entry as Record<string, unknown>;
+                x = Math.floor(Number(obj.x));
+                y = Math.floor(Number(obj.y));
+                id = Math.floor(Number(obj.id));
+            } else {
+                continue;
+            }
+
+            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(id)) continue;
+            if (x < 0 || x > maxCoord || y < 0 || y > maxCoord) continue;
+            if (id < -2 || id > MAX_TILE_ID) continue;
+
+            floorTiles.push({ x, y, id });
+            total++;
+        }
+
+        if (floorTiles.length > 0) {
+            out[String(z)] = floorTiles;
+        }
+    }
+
+    return out;
 }
 
 export function sanitizeSpawnPoint(
