@@ -15,9 +15,9 @@ Este documento centraliza e cataloga as melhores mecânicas de mapeamento inspir
 ### 🟡 Médio
 4. **Sistema de "Action ID" e "Unique ID" para Itens/Portas:**
    - Permitir que, ao clicar com o botão direito em um item colocado no mapa, possamos atribuir um `ActionID` (para portas de quest, baús, alavancas) ou `UniqueID`.-- IMPLEMENTADO --
-5. **Preenchimento Inteligente de Bordas Automáticas (Auto-Border):** -- IMPLEMENTADO --
+5. **Preenchimento Inteligente de Bordas Automáticas (Auto-Border):** *(removido do escopo — reimplementar depois)*
    - O segredo do RME. Ao pintar grama perto de água, ou terra perto de grama, o sistema decide e posiciona automaticamente os tiles de borda adequados para que o desenvolvedor não precise pintar cantinho por cantinho manualmente.
-   - Guia ADM: [`docs/auto-border.md`](docs/auto-border.md)
+   - Implementação legada removida (2026-05); motor e UI não estão no source atual. Tratar como feature nova no futuro.
 
 ### 🔴 Difícil
 6. **Ferramenta de Seleção de Área (Copy / Paste / Move):**

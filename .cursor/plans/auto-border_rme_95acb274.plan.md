@@ -1,24 +1,27 @@
 ---
 name: Auto-Border RME
 overview: "Plano para implementar Auto-Borda estilo RME no GM Studio: o ADM define conjuntos de transição entre dois terrenos (ex. grama↔água), carrega PNGs com máscara de vizinhos, e ao pintar o tile base o engine recalcula bordas automaticamente nos tiles afetados."
+status: cancelled
 todos:
   - id: ab-manifest
     content: Criar auto_border_sets.json + estender tile_properties (terrainGroup, tileRole, borderMask)
-    status: completed
+    status: cancelled
   - id: ab-engine
     content: Implementar src/engine/autoBorder.ts e integrar em main.ts (lápis, balde, formas)
-    status: completed
+    status: cancelled
   - id: ab-ui-toolbar
     content: "UI mapa: checkbox Auto-borda, dropdown conjunto e pincel fill-only"
-    status: completed
+    status: cancelled
   - id: ab-editor-tab
     content: "Aba Auto-Borda: upload spritesheet 4x4, grade preview, salvar conjunto via API dev"
-    status: completed
+    status: cancelled
   - id: ab-docs-assets
     content: docs/auto-border.md + set exemplo grass_water (16 PNGs ou sheet) + atualizar ideas_rme_roadmap
-    status: completed
+    status: cancelled
 isProject: false
 ---
+
+> **Cancelado (2026-05):** sistema de auto-borda removido do escopo. Motor e UI legados não estão no source atual. Reimplementar como feature nova se necessário.
 
 # Plano: Auto-Borda (Preenchimento inteligente de bordas)
 

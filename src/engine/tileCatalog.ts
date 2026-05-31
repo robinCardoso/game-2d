@@ -1,6 +1,6 @@
 import { ENGINE_CONFIG } from './config';
 import { isVariantBrush } from './tileVariants';
-import type { MapTileEntry, TileCatalogEntry, TileRegistry } from './types';
+import type { MapCoordSystem, MapTileEntry, TileCatalogEntry, TileRegistry } from './types';
 
 /** Identificador estável do formato de mapa esparso (IA + ferramentas). */
 export const MAP_FORMAT_ID = 'game-2d/map-sparse-v1';
@@ -9,9 +9,9 @@ export const MAP_SCHEMA_PATH = './map.schema.json';
 
 export const TILE_CATALOG_PATH = '/tile_catalog.json';
 
-export function getMapCoordSystem() {
+export function getMapCoordSystem(): MapCoordSystem {
     return {
-        origin: 'top-left' as const,
+        origin: 'top-left',
         axisX: 'columna — aumenta para leste (direita)',
         axisY: 'linha — aumenta para sul (baixo no canvas)',
         axisZ: 'andar — -7 (subsolo) … 0 (térreo) … +7 (céu)',

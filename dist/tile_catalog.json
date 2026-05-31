@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-31T11:42:18.923Z",
+  "generatedAt": "2026-05-31T23:44:20.998Z",
   "tileSize": 32,
   "format": "game-2d/map-sparse-v1",
   "coordSystem": {
@@ -20,6 +20,7 @@
       "brushId": 9000,
       "label": "Grama aleatório",
       "memberIds": [
+        7,
         8,
         9,
         10,
@@ -38,31 +39,23 @@
         23,
         24,
         25,
-        26,
-        27
+        26
       ]
     },
     "stone": {
       "brushId": 9001,
       "label": "Pedra aleatório",
       "memberIds": [
+        27,
         28,
         29,
-        30,
-        31
+        30
       ]
     }
   },
   "tiles": [
     {
       "id": 7,
-      "name": "01 grama",
-      "ref": "01_grama",
-      "category": "ground",
-      "walkable": true
-    },
-    {
-      "id": 8,
       "name": "grama_20_var_variants · 1",
       "ref": "grama_20_var_variants#0",
       "category": "ground",
@@ -71,7 +64,7 @@
       "variantIndex": 0
     },
     {
-      "id": 9,
+      "id": 8,
       "name": "grama_20_var_variants · 2",
       "ref": "grama_20_var_variants#1",
       "category": "ground",
@@ -80,7 +73,7 @@
       "variantIndex": 1
     },
     {
-      "id": 10,
+      "id": 9,
       "name": "grama_20_var_variants · 3",
       "ref": "grama_20_var_variants#2",
       "category": "ground",
@@ -89,7 +82,7 @@
       "variantIndex": 2
     },
     {
-      "id": 11,
+      "id": 10,
       "name": "grama_20_var_variants · 4",
       "ref": "grama_20_var_variants#3",
       "category": "ground",
@@ -98,7 +91,7 @@
       "variantIndex": 3
     },
     {
-      "id": 12,
+      "id": 11,
       "name": "grama_20_var_variants · 5",
       "ref": "grama_20_var_variants#4",
       "category": "ground",
@@ -107,7 +100,7 @@
       "variantIndex": 4
     },
     {
-      "id": 13,
+      "id": 12,
       "name": "grama_20_var_variants · 6",
       "ref": "grama_20_var_variants#5",
       "category": "ground",
@@ -116,7 +109,7 @@
       "variantIndex": 5
     },
     {
-      "id": 14,
+      "id": 13,
       "name": "grama_20_var_variants · 7",
       "ref": "grama_20_var_variants#6",
       "category": "ground",
@@ -125,7 +118,7 @@
       "variantIndex": 6
     },
     {
-      "id": 15,
+      "id": 14,
       "name": "grama_20_var_variants · 8",
       "ref": "grama_20_var_variants#7",
       "category": "ground",
@@ -134,7 +127,7 @@
       "variantIndex": 7
     },
     {
-      "id": 16,
+      "id": 15,
       "name": "grama_20_var_variants · 9",
       "ref": "grama_20_var_variants#8",
       "category": "ground",
@@ -143,7 +136,7 @@
       "variantIndex": 8
     },
     {
-      "id": 17,
+      "id": 16,
       "name": "grama_20_var_variants · 10",
       "ref": "grama_20_var_variants#9",
       "category": "ground",
@@ -152,7 +145,7 @@
       "variantIndex": 9
     },
     {
-      "id": 18,
+      "id": 17,
       "name": "grama_20_var_variants · 11",
       "ref": "grama_20_var_variants#10",
       "category": "ground",
@@ -161,7 +154,7 @@
       "variantIndex": 10
     },
     {
-      "id": 19,
+      "id": 18,
       "name": "grama_20_var_variants · 12",
       "ref": "grama_20_var_variants#11",
       "category": "ground",
@@ -170,7 +163,7 @@
       "variantIndex": 11
     },
     {
-      "id": 20,
+      "id": 19,
       "name": "grama_20_var_variants · 13",
       "ref": "grama_20_var_variants#12",
       "category": "ground",
@@ -179,7 +172,7 @@
       "variantIndex": 12
     },
     {
-      "id": 21,
+      "id": 20,
       "name": "grama_20_var_variants · 14",
       "ref": "grama_20_var_variants#13",
       "category": "ground",
@@ -188,7 +181,7 @@
       "variantIndex": 13
     },
     {
-      "id": 22,
+      "id": 21,
       "name": "grama_20_var_variants · 15",
       "ref": "grama_20_var_variants#14",
       "category": "ground",
@@ -197,7 +190,7 @@
       "variantIndex": 14
     },
     {
-      "id": 23,
+      "id": 22,
       "name": "grama_20_var_variants · 16",
       "ref": "grama_20_var_variants#15",
       "category": "ground",
@@ -206,7 +199,7 @@
       "variantIndex": 15
     },
     {
-      "id": 24,
+      "id": 23,
       "name": "grama_20_var_variants · 17",
       "ref": "grama_20_var_variants#16",
       "category": "ground",
@@ -215,7 +208,7 @@
       "variantIndex": 16
     },
     {
-      "id": 25,
+      "id": 24,
       "name": "grama_20_var_variants · 18",
       "ref": "grama_20_var_variants#17",
       "category": "ground",
@@ -224,7 +217,7 @@
       "variantIndex": 17
     },
     {
-      "id": 26,
+      "id": 25,
       "name": "grama_20_var_variants · 19",
       "ref": "grama_20_var_variants#18",
       "category": "ground",
@@ -233,7 +226,7 @@
       "variantIndex": 18
     },
     {
-      "id": 27,
+      "id": 26,
       "name": "grama_20_var_variants · 20",
       "ref": "grama_20_var_variants#19",
       "category": "ground",
@@ -242,8 +235,8 @@
       "variantIndex": 19
     },
     {
-      "id": 28,
-      "name": "ground-pedra_variants · 1",
+      "id": 27,
+      "name": "ground_pedra_variants · 1",
       "ref": "ground_pedra_variants#0",
       "category": "ground",
       "variantGroup": "stone",
@@ -251,8 +244,8 @@
       "variantIndex": 0
     },
     {
-      "id": 29,
-      "name": "ground-pedra_variants · 2",
+      "id": 28,
+      "name": "ground_pedra_variants · 2",
       "ref": "ground_pedra_variants#1",
       "category": "ground",
       "variantGroup": "stone",
@@ -260,8 +253,8 @@
       "variantIndex": 1
     },
     {
-      "id": 30,
-      "name": "ground-pedra_variants · 3",
+      "id": 29,
+      "name": "ground_pedra_variants · 3",
       "ref": "ground_pedra_variants#2",
       "category": "ground",
       "variantGroup": "stone",
@@ -269,8 +262,8 @@
       "variantIndex": 2
     },
     {
-      "id": 31,
-      "name": "ground-pedra_variants · 4",
+      "id": 30,
+      "name": "ground_pedra_variants · 4",
       "ref": "ground_pedra_variants#3",
       "category": "ground",
       "variantGroup": "stone",

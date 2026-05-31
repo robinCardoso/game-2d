@@ -18,6 +18,7 @@ import { respawnEntitiesFromSpawns } from './character/respawnEntities';
 import { GameEntity } from './character/entity';
 import { initCharacterEditor, setSpriteEditorProfile, getSpriteEditorFlyoutTitle, type SpriteProfileId } from './editor/characterEditor';
 import { initMapSpriteEditor, setMapSpriteAfterSaveHandler } from './editor/mapSpriteEditor';
+import { initAutoBorderUi, onMapEditorTileSelectionChanged } from './editor/autoBorderUi';
 import { NpcAI } from './character/npcAI';
 import {
     ENGINE_CONFIG,
@@ -618,6 +619,7 @@ setupMovementDevControls();
 updateRoleUI();
 initCharacterEditor({ onCatalogChanged: refreshCreatureCatalog });
 initMapSpriteEditor();
+initAutoBorderUi();
 
 // --- SISTEMA PREMIUM DE TELETRANSPORTE (IR PARA POSIÇÃO) ---
 const teleportModal = document.getElementById('teleportModal') as HTMLDivElement;
@@ -925,6 +927,7 @@ mapEditorController = initMapEditor({
         }
         updateTileBrushStatus(mapEditorController.selectedTileType);
         updateVariantBrushHint(mapEditorController.selectedTileType);
+        onMapEditorTileSelectionChanged(mapEditorController.selectedTileType, TILE_TYPES);
         updatePaintBrushSizeBarVisibility();
     },
     onToolChanged: () => {

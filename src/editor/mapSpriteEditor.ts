@@ -105,6 +105,12 @@ export function initMapSpriteEditor() {
     const categoryDatalist = document.getElementById('mapSpriteCategoryList') as HTMLDataListElement | null;
     const categoryTreeEl = document.getElementById('mapSpriteCategoryTree') as HTMLDivElement | null;
     const propertiesBlock = document.getElementById('mapSpriteTerrainPropertiesBlock') as HTMLDivElement;
+    const borderSetBlock = document.getElementById('mapSpriteBorderSetBlock') as HTMLDivElement | null;
+    const categoryBlock = document.getElementById('mapSpriteCategoryBlock') as HTMLDivElement | null;
+    const borderSetIdInput = document.getElementById('mapSpriteBorderSetIdInput') as HTMLInputElement | null;
+    const borderSetLabelInput = document.getElementById('mapSpriteBorderSetLabelInput') as HTMLInputElement | null;
+    const fillTerrainInput = document.getElementById('mapSpriteFillTerrainInput') as HTMLInputElement | null;
+    const borderCategoryInput = document.getElementById('mapSpriteBorderCategoryInput') as HTMLInputElement | null;
 
     // Propriedades físicas
     const walkableToggle = document.getElementById('mapSpriteWalkableToggle') as HTMLInputElement;
@@ -120,6 +126,7 @@ export function initMapSpriteEditor() {
     const importInput = document.getElementById('importMapSpriteInput') as HTMLInputElement;
     const openCalibratorBtn = document.getElementById('openMapSpriteCalibratorBtn');
     const saveServerBtn = document.getElementById('saveMapSpriteServerBtn');
+    const saveBorderSetBtn = document.getElementById('saveMapSpriteBorderSetBtn');
 
     // Chroma Key
     const chromaKeyToggle = document.getElementById('mapSpriteChromaKeyToggle') as HTMLInputElement;
@@ -563,8 +570,21 @@ export function initMapSpriteEditor() {
     });
 
     function syncTerrainPropertiesVisibility(): void {
-        const isTerrain = assetTypeSelect.value === 'terrain';
+        const type = assetTypeSelect.value;
+        const isTerrain = type === 'terrain';
+        const isBorderSet = type === 'border_set';
         if (propertiesBlock) propertiesBlock.style.display = isTerrain ? 'block' : 'none';
+        if (borderSetBlock) borderSetBlock.style.display = isBorderSet ? 'block' : 'none';
+        if (categoryBlock) categoryBlock.style.display = isBorderSet ? 'none' : 'block';
+        if (saveServerBtn) {
+            (saveServerBtn as HTMLElement).style.display = isBorderSet ? 'none' : '';
+        }
+        if (saveBorderSetBtn) {
+            (saveBorderSetBtn as HTMLElement).style.display = isBorderSet ? '' : 'none';
+        }
+        if (openCalibratorBtn) {
+            openCalibratorBtn.textContent = isBorderSet ? '🔍 Calibrar máscaras' : '🔍 Calibrar Grade';
+        }
     }
 
     variantGroupExclude?.addEventListener('change', () => {
@@ -577,6 +597,20 @@ export function initMapSpriteEditor() {
 
     assetTypeSelect?.addEventListener('change', () => {
         syncTerrainPropertiesVisibility();
+        if (assetTypeSelect.value === 'border_set') {
+            if (borderSetIdInput && !borderSetIdInput.value.trim()) {
+                borderSetIdInput.value = 'grass_edges';
+            }
+            if (borderSetLabelInput && !borderSetLabelInput.value.trim()) {
+                borderSetLabelInput.value = 'Bordas de grama';
+            }
+            if (fillTerrainInput && !fillTerrainInput.value.trim()) {
+                fillTerrainInput.value = 'grass';
+            }
+            if (borderCategoryInput && !borderCategoryInput.value.trim()) {
+                borderCategoryInput.value = 'terrain/borders/grass_edges';
+            }
+        }
         refreshCategoryDatalist();
     });
     syncTerrainPropertiesVisibility();
@@ -681,6 +715,14 @@ export function initMapSpriteEditor() {
             'idle',
             'down',
             async (result: any) => {
+                if (assetTypeSelect.value === 'border_set') {
+                    const cellCount = result.borderSetCells?.length ?? 0;
+                    toast.success(
+                        `Conjunto calibrado: ${result.gridCols ?? '?'}×${result.gridRows ?? '?'} · ${cellCount} células com máscara.`
+                    );
+                    return;
+                }
+
                 const selCol = result.selectedFrameCol ?? 0;
                 const selRow = result.selectedFrameRow ?? 0;
                 const targetSize = ENGINE_CONFIG.TILE_SIZE;
@@ -760,10 +802,11 @@ export function initMapSpriteEditor() {
                 }
             },
             {
-                mode: 'map',
+                mode: assetTypeSelect.value === 'border_set' ? 'borderSet' : 'map',
                 initialGridCols: calibration.gridCols,
                 initialGridRows: calibration.gridRows,
-                onBatchExport: (result, scope) => {
+                borderSetFillTerrain: fillTerrainInput?.value.trim() || 'grass',
+                onBatchExport: assetTypeSelect.value === 'border_set' ? undefined : (result, scope) => {
                     if (!processedImage) return;
                     const calibration = calibrationResultToBatchGrid(processedImage, result);
                     const rawPrefix = nameInput.value.trim() || 'grama';
@@ -793,6 +836,19 @@ export function initMapSpriteEditor() {
                     );
                 },
             }
+        );
+    });
+
+    saveBorderSetBtn?.addEventListener('click', async () => {
+        if (!originalImage || !processedImage || !isImageLoaded) {
+            toast.error('Carregue uma imagem PNG e calibre as máscaras primeiro.');
+            return;
+        }
+        const setId = borderSetIdInput?.value.trim() || 'grass_edges';
+        const label = borderSetLabelInput?.value.trim() || 'Bordas de grama';
+        toast.info(
+            `Salvar conjunto «${label}» (${setId}) — API em implementação. Calibração pronta na UI.`,
+            6000
         );
     });
 

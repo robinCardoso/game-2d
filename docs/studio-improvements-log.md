@@ -107,7 +107,6 @@ reloadTileRegistry → snapshot com refs → remapear worldMap
 
 ### Pendente / backlog
 - `force=true` + substituição de refs nos mapas (migração automática)
-- Exclusão de entradas em `tile_variant_groups.json` por auto-border
 
 ---
 

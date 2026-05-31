@@ -52,7 +52,6 @@ Varredura em `public/maps/*.json`:
 - `force=true` com confirmação GM
 - Soft delete / arquivo em `tiles/_archive/`
 - Exclusão de personagem/NPC/Mob
-- Limpeza de `auto_border_sets.json` ao excluir tile de borda
 
 ## Resolução estável de tiles (relacionado)
 

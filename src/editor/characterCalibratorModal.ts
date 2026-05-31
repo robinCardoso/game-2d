@@ -1,12 +1,15 @@
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import { computeFrameDimensionsFromGrid } from './calibratorGrid';
+import { createBorderSetCalibratorUi, type BorderSetCellAssignment } from './borderSetCalibratorUi';
 import { toast, popup } from '../utils/popup';
 
 export interface CalibratorOpenOptions {
-    /** map: tile único / spritesheet de terreno; oculta painel de animações */
-    mode?: 'map' | 'character';
+    /** map: tile único; borderSet: conjunto auto-borda; character: personagem */
+    mode?: 'map' | 'character' | 'borderSet';
     initialGridCols?: number;
     initialGridRows?: number;
+    /** Modo borderSet: rótulo fill (ex. grass) */
+    borderSetFillTerrain?: string;
     /** Modo mapa: abre diálogo de exportação em lote da grade inteira */
     onBatchExport?: (result: CalibrationResult, scope: 'all' | 'selected') => void;
 }
@@ -28,6 +31,10 @@ export interface CalibrationResult {
     selectedFrameRow?: number;
     /** Frames escolhidos no modo seleção múltipla (ordem de clique) */
     selectedFrames?: Array<{ col: number; row: number }>;
+    /** Modo borderSet: máscara por célula */
+    borderSetCells?: BorderSetCellAssignment[];
+    gridCols?: number;
+    gridRows?: number;
 }
 
 export function openCharacterCalibrator(
@@ -42,6 +49,7 @@ export function openCharacterCalibrator(
     const closeBtn = document.getElementById('calibratorClose');
     const cancelBtn = document.getElementById('calCancelBtn');
     const confirmBtn = document.getElementById('calConfirmBtn');
+    const borderConfirmBtn = document.getElementById('calBorderConfirmBtn');
     const canvas = document.getElementById('calibratorCanvas') as HTMLCanvasElement;
     const ctx = canvas?.getContext('2d');
 
@@ -93,6 +101,13 @@ export function openCharacterCalibrator(
     const calMapSelectAllBtn = document.getElementById('calMapSelectAllBtn');
     const calMapClearSelectionBtn = document.getElementById('calMapClearSelectionBtn');
     const calMapSelectionSummary = document.getElementById('calMapSelectionSummary');
+    const calibratorBorderSetPanel = document.getElementById('calibratorBorderSetPanel');
+    const calBorderCellList = document.getElementById('calBorderCellList');
+    const calBorderSetBadge = document.getElementById('calBorderSetBadge');
+    const calBorderPickHint = document.getElementById('calBorderPickHint');
+    const calBorderMaskHint = document.getElementById('calBorderMaskHint');
+    const calBorderPreset3x3 = document.getElementById('calBorderPreset3x3');
+    const calBorderPreset4x4 = document.getElementById('calBorderPreset4x4');
 
     if (!modal || !canvas || !ctx) return;
 
@@ -101,18 +116,33 @@ export function openCharacterCalibrator(
 
     const imageW = imageElement.naturalWidth || imageElement.width;
     const imageH = imageElement.naturalHeight || imageElement.height;
+    const isBorderSetMode = options?.mode === 'borderSet';
     const isMapMode = options?.mode === 'map';
 
     if (calibratorAnimPanel) {
-        calibratorAnimPanel.style.display = isMapMode ? 'none' : '';
+        calibratorAnimPanel.style.display = isMapMode || isBorderSetMode ? 'none' : '';
     }
     if (calibratorMapFramePanel) {
         calibratorMapFramePanel.style.display = isMapMode ? '' : 'none';
     }
+    if (calibratorBorderSetPanel) {
+        calibratorBorderSetPanel.style.display = isBorderSetMode ? '' : 'none';
+    }
+    if (confirmBtn) {
+        confirmBtn.style.display = isBorderSetMode ? 'none' : '';
+    }
+    if (borderConfirmBtn) {
+        borderConfirmBtn.style.display = isBorderSetMode ? '' : 'none';
+    }
     if (calibratorInstructionHint) {
-        calibratorInstructionHint.innerHTML = isMapMode
-            ? '💡 <strong>Tile único:</strong> Informe colunas e linhas da spritesheet, clique em <em>Aplicar divisão</em>, depois clique no sprite desejado (ou use os campos à direita). Confirme para extrair só esse frame — ou use <em>Exportar todos os frames</em> para gerar a sheet inteira de uma vez.'
-            : '💡 <strong>Instrução:</strong> Clique na imagem para definir a Margem de Início do primeiro frame. Clique e arraste para alinhar a grade de fatiamento com precisão milimétrica!';
+        if (isBorderSetMode) {
+            calibratorInstructionHint.innerHTML =
+                '💡 <strong>Conjunto auto-borda:</strong> Ajuste colunas/linhas e clique em <em>Aplicar divisão</em>. Selecione um slot à direita, clique no tile na imagem e escolha a máscara (0–15).';
+        } else {
+            calibratorInstructionHint.innerHTML = isMapMode
+                ? '💡 <strong>Tile único:</strong> Informe colunas e linhas da spritesheet, clique em <em>Aplicar divisão</em>, depois clique no sprite desejado (ou use os campos à direita). Confirme para extrair só esse frame — ou use <em>Exportar todos os frames</em> para gerar a sheet inteira de uma vez.'
+                : '💡 <strong>Instrução:</strong> Clique na imagem para definir a Margem de Início do primeiro frame. Clique e arraste para alinhar a grade de fatiamento com precisão milimétrica!';
+        }
     }
     if (calBatchExportBtn) {
         calBatchExportBtn.style.display = isMapMode ? '' : 'none';
@@ -120,6 +150,19 @@ export function openCharacterCalibrator(
     if (calibratorBatchBtnGroup) {
         calibratorBatchBtnGroup.style.display = isMapMode ? '' : 'none';
     }
+
+    const borderSetUi =
+        isBorderSetMode && calBorderCellList
+            ? createBorderSetCalibratorUi({
+                  listEl: calBorderCellList,
+                  badgeEl: calBorderSetBadge,
+                  pickHintEl: calBorderPickHint,
+                  maskHintEl: calBorderMaskHint,
+                  fillTerrain: options?.borderSetFillTerrain ?? 'grass',
+                  onChange: () => renderCalibrator(),
+                  onActiveCellChange: () => renderCalibrator(),
+              })
+            : null;
 
     // Cópia profunda das configurações para manipulação interativa no modal
     let localFrameWidth = initialConfig.frameWidth > 0 ? initialConfig.frameWidth : imageW;
@@ -205,6 +248,9 @@ export function openCharacterCalibrator(
         calFrameHeightInput.value = String(localFrameHeight);
         updateDivisionPreview(result);
         renderCalibrator();
+        if (borderSetUi) {
+            borderSetUi.rebuildCellList(localGridCols, localGridRows);
+        }
         if (showToast) {
             toast.success(`Grade ${localGridCols}×${localGridRows} → frames ${localFrameWidth}×${localFrameHeight} px`);
         }
@@ -541,6 +587,34 @@ export function openCharacterCalibrator(
                     ctx.strokeStyle = 'rgba(255, 60, 60, 0.7)';
                     ctx.lineWidth = 1;
                 }
+
+                if (isBorderSetMode && borderSetUi) {
+                    const mask = borderSetUi.getMaskAt(c, r);
+                    const src = borderSetUi.getSourceAt(c, r);
+                    const isSourceHere = src.col === c && src.row === r;
+                    if (isSourceHere && mask > 0) {
+                        ctx.fillStyle = 'rgba(59, 130, 246, 0.85)';
+                        ctx.font = 'bold 11px sans-serif';
+                        ctx.fillText(`M${mask}`, x + 5, y + 14);
+                    }
+                }
+            }
+        }
+
+        if (isBorderSetMode && borderSetUi) {
+            const active = borderSetUi.getActiveCell();
+            const src = borderSetUi.getSourceAt(active.col, active.row);
+            if (src.col >= 0 && src.col < cols && src.row >= 0 && src.row < rows) {
+                const x = localOffsetX + src.col * (localFrameWidth + localGapX);
+                const y = localOffsetY + src.row * (localFrameHeight + localGapY);
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(x + 1, y + 1, localFrameWidth - 2, localFrameHeight - 2);
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.25)';
+                ctx.fillRect(x + 2, y + 2, localFrameWidth - 4, localFrameHeight - 4);
+                ctx.fillStyle = '#22c55e';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.fillText('ATIVO', x + 6, y + 18);
             }
         }
 
@@ -576,13 +650,22 @@ export function openCharacterCalibrator(
         }
     }
 
-    // Clique no canvas — seleção de frames (modo mapa; multi-select não usa arraste)
+    // Clique no canvas — seleção de frames (mapa) ou tile de borda (borderSet)
     canvas.addEventListener(
         'click',
         (e) => {
-            if (!isMapMode) return;
             const picked = pickFrameAtClientPoint(e.clientX, e.clientY);
-            if (picked) applyFramePick(picked.col, picked.row);
+            if (!picked) return;
+            if (isMapMode) {
+                applyFramePick(picked.col, picked.row);
+            } else if (isBorderSetMode && borderSetUi) {
+                borderSetUi.handleCanvasPick(picked.col, picked.row);
+                renderCalibrator();
+                toast.info(
+                    `Tile sheet Col ${picked.col + 1} · Lin ${picked.row + 1} associado ao slot ativo.`,
+                    2800
+                );
+            }
         },
         { signal }
     );
@@ -641,7 +724,7 @@ export function openCharacterCalibrator(
         (e) => {
             if (!isDragging) return;
             isDragging = false;
-            if (!hasDragged && !isMapMode) {
+            if (!hasDragged && !isMapMode && !isBorderSetMode) {
                 const picked = pickFrameAtClientPoint(e.clientX, e.clientY);
                 if (picked) applyFramePick(picked.col, picked.row);
             }
@@ -682,6 +765,16 @@ export function openCharacterCalibrator(
 
     calGrid4x4Btn?.addEventListener('click', () => {
         applyGridDivision(4, 4, true);
+    });
+
+    calBorderPreset3x3?.addEventListener('click', () => {
+        applyGridDivision(3, 3, true);
+        borderSetUi?.applyPreset(3, 3);
+    });
+
+    calBorderPreset4x4?.addEventListener('click', () => {
+        applyGridDivision(4, 4, true);
+        borderSetUi?.applyPreset(4, 4);
     });
 
     [calGridColsInput, calGridRowsInput].forEach((el) => {
@@ -838,8 +931,39 @@ export function openCharacterCalibrator(
         closeModal();
     });
 
+    borderConfirmBtn?.addEventListener('click', () => {
+        if (!isBorderSetMode || !borderSetUi) return;
+        if (localFrameWidth < 1 || localFrameHeight < 1) {
+            toast.error('Defina a grade (Aplicar divisão) antes de confirmar.');
+            return;
+        }
+        const { cols, rows } = getVisibleGridSize();
+        const cells = borderSetUi.getAssignments(cols, rows);
+        onConfirm({
+            frameWidth: localFrameWidth,
+            frameHeight: localFrameHeight,
+            offsetX: localOffsetX,
+            offsetY: localOffsetY,
+            gapX: localGapX,
+            gapY: localGapY,
+            anchorX: localAnchorX,
+            anchorY: localAnchorY,
+            animations: localAnimations,
+            currentState: activeState,
+            currentDirection: activeDirection,
+            sheetLayout: localSheetLayout,
+            borderSetCells: cells,
+            gridCols: cols,
+            gridRows: rows,
+        });
+        closeModal();
+    });
+
     // Inicialização do Modal
-    if (isMapMode && (localGridCols > 1 || localGridRows > 1)) {
+    if (isBorderSetMode) {
+        applyGridDivision(localGridCols, localGridRows, false);
+        borderSetUi?.rebuildCellList(localGridCols, localGridRows);
+    } else if (isMapMode && (localGridCols > 1 || localGridRows > 1)) {
         applyGridDivision(localGridCols, localGridRows, false);
     } else if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {
         applyGridDivision(localGridCols, localGridRows, false);

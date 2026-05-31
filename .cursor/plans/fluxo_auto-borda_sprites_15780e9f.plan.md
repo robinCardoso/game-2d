@@ -1,27 +1,30 @@
 ---
 name: Fluxo auto-borda sprites
 overview: Mover criação e configuração de conjuntos de auto-borda do editor de mapa para o fluxo Criar Sprites + Calibrador, com grade flexível (NxM), atribuição de máscara por célula e exportação em lote. O editor de mapa mantém apenas o uso na aba Pin (ligar, conjunto, pincel).
+status: cancelled
 todos:
   - id: types-slicer
     content: Criar borderSetTypes.ts, borderSetPresets.ts e borderSetSlicer.ts (fatiamento NxM + presets 3x3/4x4)
-    status: pending
+    status: cancelled
   - id: calibrator-border-mode
     content: "Estender characterCalibratorModal com mode borderSet: metadados, grade clicável, máscara por célula, confirm rico"
-    status: pending
+    status: cancelled
   - id: sprite-editor-flow
     content: "Refatorar mapSpriteEditor: tipo Conjunto auto-borda, calibrar+salvar via save-auto-border-set, tile simples inalterado"
-    status: pending
+    status: cancelled
   - id: remove-map-border-tab
     content: Remover aba Borda do studio.html, initAutoBorderEditor e botão BORDA; manter só Pin (toggle/conjunto/pincel)
-    status: pending
+    status: cancelled
   - id: api-list-sets
     content: Adicionar GET /api/list-auto-border-sets e carregar conjunto existente no Criar Sprites
-    status: pending
+    status: cancelled
   - id: docs-acceptance
     content: Atualizar docs/auto-border.md e validar fluxo terra 3x3 ponta a ponta
-    status: pending
+    status: cancelled
 isProject: false
 ---
+
+> **Cancelado (2026-05):** auto-borda removido do escopo. Plano arquivado; não implementar a partir deste documento.
 
 # Plano: Auto-borda no Criar Sprites + Calibrador
 

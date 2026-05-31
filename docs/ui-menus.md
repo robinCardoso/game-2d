@@ -36,6 +36,38 @@ Paleta **Tileset** (`#tileSelector`) lista **todos** os PNGs em `tiles/**` — e
 
 Documentação: [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md), [studio-improvements-log.md](./studio-improvements-log.md).
 
+### Conjunto auto-borda (`border_set`)
+
+Tipo de asset em **Criar Sprites** para máscaras genéricas de borda (overlay sobre chão vizinho). **Não** há campo “terreno vizinho” — um conjunto serve para qualquer piso adjacente.
+
+| Elemento | ID | Função |
+|----------|-----|--------|
+| Bloco do formulário | `#mapSpriteBorderSetBlock` | Visível só quando tipo = `border_set` |
+| ID do conjunto | `#mapSpriteBorderSetIdInput` | Ex.: `grass_edges` |
+| Nome exibido | `#mapSpriteBorderSetLabelInput` | Ex.: `Bordas de grama` |
+| Terreno pintado (fill) | `#mapSpriteFillTerrainInput` | Liga ao pincel 🎲 (ex.: `grass`) |
+| Pasta destino | `#mapSpriteBorderCategoryInput` | Ex.: `terrain/borders/grass_edges` |
+| Salvar | `#saveMapSpriteBorderSetBtn` | Stub UI — API em implementação |
+
+Calibrador em modo `borderSet`: badge **grama → chão**, presets 3×3/4×4, `#calBorderCellList` (máscaras 0–15), `#calBorderConfirmBtn`.
+
+Documentação completa: [auto-border.md](./auto-border.md).
+
+## Auto-borda no mapa (aba Pin / Tile)
+
+Toolbar na aba **Pin** (`#autoBorderToolbar`):
+
+| Elemento | ID | Função |
+|----------|-----|--------|
+| Toggle | `#autoBorderEnabledToggle` | Liga/desliga auto-borda |
+| Conjunto | `#autoBorderSetSelect` | Conjuntos com `fillTerrain: grass` (MVP mock: `grass_edges`) |
+| Hint | `#autoBorderPaintHint` | Copy “qualquer chão vizinho” |
+| Recalcular | `#autoBorderRecalcFloorBtn` | Disabled até motor existir |
+
+Aba **Tile**: chip `#tileAutoBorderStatusChip` quando Grama 🎲 + toggle ON.
+
+JS: `src/editor/autoBorderUi.ts` — `initAutoBorderUi()`, smart default ao selecionar pincel `grass`.
+
 ## Player vs GM
 
 Elementos com `data-requires-edit="true"` somem quando cargo = Player (`setEditorMenusVisible`).

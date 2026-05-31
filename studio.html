@@ -160,6 +160,18 @@
                   <p id="paintVariantBrushHint" class="flyout-hint variant-brush-hint" style="display: none; color: var(--accent-color);">
                     🎲 Pincel ativo: <span id="paintVariantBrushHintLabel"></span> — pinte no mapa para sortear
                   </p>
+                  <div id="autoBorderToolbar" class="map-editor-panel-box auto-border-toolbar">
+                    <label class="map-editor-checkbox-label">
+                      <input type="checkbox" id="autoBorderEnabledToggle" />
+                      Auto-borda
+                    </label>
+                    <label class="flyout-label">Conjunto ativo</label>
+                    <select id="autoBorderSetSelect" class="select-full map-editor-select" disabled></select>
+                    <p id="autoBorderPaintHint" class="flyout-hint auto-border-hint">
+                      Use <strong>Grama aleatório</strong> na aba Tile. A borda sobrepõe <strong>qualquer chão</strong> vizinho — o piso de baixo não é apagado.
+                    </p>
+                    <button type="button" class="floor-btn" id="autoBorderRecalcFloorBtn" disabled title="Disponível quando o motor de auto-borda estiver implementado">↻ Recalcular andar</button>
+                  </div>
                   <div class="floor-controls map-editor-actions">
                     <button type="button" class="floor-btn" id="undoBtnFlyout" disabled>↩ Desfazer</button>
                     <button type="button" class="floor-btn" id="redoBtnFlyout" disabled>↪ Refazer</button>
@@ -179,6 +191,7 @@
                     <input type="text" id="tileSearchInput" placeholder="🔍 Buscar tiles (ex: grass, wall)..." style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px 6px 28px; font-size: 11px; outline: none; transition: border-color 0.2s;" onfocus="this.style.borderColor='var(--accent-color)'" onblur="this.style.borderColor='#3f4452'" />
                     <span style="position: absolute; left: 8px; top: 50%; transform: translateY(-50%); opacity: 0.5; pointer-events: none; font-size: 10px;">🔍</span>
                   </div>
+                  <p id="tileAutoBorderStatusChip" class="tile-auto-border-chip" style="display: none;" aria-live="polite"></p>
                   <div class="tile-palette" id="tileSelector"></div>
                 </div>
 
@@ -480,13 +493,32 @@
                   <select id="mapSpriteAssetTypeSelect" class="select-full" style="margin-bottom: 12px; background: #111318; border-color: #3f4452;">
                     <option value="terrain" selected>Bloco de Mapa (Terreno)</option>
                     <option value="items">Item / Decoração</option>
+                    <option value="border_set">Conjunto auto-borda</option>
                   </select>
 
+                  <div id="mapSpriteBorderSetBlock" style="display: none; margin-bottom: 12px;">
+                    <label class="flyout-label">Conjunto de bordas</label>
+                    <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">ID do conjunto</label>
+                    <input type="text" id="mapSpriteBorderSetIdInput" value="grass_edges" placeholder="grass_edges" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
+                    <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Nome exibido</label>
+                    <input type="text" id="mapSpriteBorderSetLabelInput" value="Bordas de grama" placeholder="Bordas de grama" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
+                    <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Terreno pintado (fill)</label>
+                    <input type="text" id="mapSpriteFillTerrainInput" list="mapSpriteFillTerrainList" value="grass" placeholder="grass" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
+                    <datalist id="mapSpriteFillTerrainList">
+                      <option value="grass"></option>
+                    </datalist>
+                    <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Pasta destino</label>
+                    <input type="text" id="mapSpriteBorderCategoryInput" value="terrain/borders/grass_edges" placeholder="terrain/borders/grass_edges" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
+                    <p class="flyout-hint" style="margin: 0;">Máscaras genéricas: aplicam-se automaticamente sobre <strong>qualquer chão</strong> ao lado da grama pintada. Não é preciso escolher pedra, areia ou terra.</p>
+                  </div>
+
+                  <div id="mapSpriteCategoryBlock">
                   <label class="flyout-label">Subpasta em tiles/maps</label>
                   <p class="flyout-hint" style="margin-bottom: 6px;">Escolha na lista, clique na árvore abaixo ou digite uma pasta nova.</p>
                   <input type="text" id="mapSpriteCategoryInput" list="mapSpriteCategoryList" placeholder="ex: grass, terrain/water" autocomplete="off" style="width: 100%; margin-bottom: 6px; font-size: 11px; padding: 4px 8px;" />
                   <datalist id="mapSpriteCategoryList"></datalist>
                   <div id="mapSpriteCategoryTree" class="char-folder-tree" aria-label="Estrutura de pastas de sprites de mapa"></div>
+                  </div>
 
                   <!-- Propriedades Físicas (Apenas Terreno) -->
                   <div id="mapSpriteTerrainPropertiesBlock">
@@ -526,7 +558,8 @@
                   <label class="flyout-label">Ações / Importar</label>
                   <button type="button" class="menu-dropdown-item block-btn" id="loadMapSpriteBtn" style="margin-bottom: 8px;">Carregar PNG</button>
                   <button type="button" class="menu-dropdown-item block-btn" id="openMapSpriteCalibratorBtn" style="margin-bottom: 8px; background: var(--accent-color); color: #fff; text-align: center;">🔍 Calibrar Grade</button>
-                  <button type="button" class="menu-dropdown-item block-btn" id="saveMapSpriteServerBtn" style="margin-bottom: 12px; text-align: center; border: 1px solid var(--accent-color); color: var(--accent-color); background: transparent;">💾 Salvar no Servidor</button>
+                  <button type="button" class="menu-dropdown-item block-btn" id="saveMapSpriteServerBtn" style="margin-bottom: 8px; text-align: center; border: 1px solid var(--accent-color); color: var(--accent-color); background: transparent;">💾 Salvar no Servidor</button>
+                  <button type="button" class="menu-dropdown-item block-btn" id="saveMapSpriteBorderSetBtn" style="display: none; margin-bottom: 12px; text-align: center; border: 1px solid var(--accent-color); color: #fff; background: var(--accent-color);">💾 Salvar conjunto</button>
                   <input type="file" id="importMapSpriteInput" accept=".png" hidden />
 
                   <label class="check-row" style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: var(--text-dim); font-size: 11px;">
@@ -721,6 +754,21 @@
               <p id="calMapFrameTotal" class="flyout-hint" style="margin: 4px 0 0; font-size: 10px;">Grade visível: — frames</p>
             </div>
 
+            <div class="calibrator-submenu" id="calibratorBorderSetPanel" style="display: none;">
+              <div class="calibrator-submenu-title">🌿 Conjunto auto-borda</div>
+              <p id="calBorderSetBadge" class="cal-border-set-badge">grama → chão</p>
+              <p class="flyout-hint" style="margin: 0 0 6px; font-size: 10px; line-height: 1.45;">
+                A máscara diz <strong>de onde vem a grama</strong> em relação ao chão — não é o desenho do tile. Ex.: «Grama ↓ Sul» = filete na parte de baixo.
+              </p>
+              <p id="calBorderPickHint" class="cal-border-pick-hint">Selecione um slot e clique no tile na imagem.</p>
+              <p id="calBorderMaskHint" class="cal-border-mask-hint"></p>
+              <div class="cal-border-preset-row">
+                <button type="button" class="floor-btn" id="calBorderPreset3x3">Preset 3×3</button>
+                <button type="button" class="floor-btn" id="calBorderPreset4x4">Preset 4×4</button>
+              </div>
+              <div id="calBorderCellList" class="cal-border-cell-list" aria-label="Máscaras por célula"></div>
+            </div>
+
             <!-- Ajuste de Âncora -->
             <div class="calibrator-submenu">
               <div class="calibrator-submenu-title">⚓ Âncora e Pivot</div>
@@ -788,6 +836,7 @@
           </div>
           <span class="calibrator-footer-spacer"></span>
           <button type="button" class="floor-btn" id="calCancelBtn" style="max-width: 100px;">Cancelar</button>
+          <button type="button" class="floor-btn" id="calBorderConfirmBtn" style="display: none; max-width: 140px; background: var(--accent-color);">Confirmar conjunto</button>
           <button type="button" class="floor-btn" id="calConfirmBtn" style="max-width: 100px; background: var(--accent-color);">Confirmar</button>
         </footer>
       </div>
