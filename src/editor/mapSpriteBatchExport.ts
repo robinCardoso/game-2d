@@ -51,6 +51,20 @@ function sanitizeVariantGroup(raw: string): string {
         .replace(/[^a-z0-9_-]/g, '');
 }
 
+/** Grupo inferido ao exportar strip com "Sem grupo" — espelha tileRegistry.inferVariantGroupForStrip. */
+function inferVariantGroupFromExportName(stripBaseName: string, hintGroup: string): string | undefined {
+    const base = stripBaseName.toLowerCase().replace(/-/g, '_');
+    if (/grama|grass/.test(base)) return 'grass';
+    if (/pedra|stone|ground_pedra|ground/.test(base)) return 'stone';
+    if (/dirt|terra|earth/.test(base)) return 'dirt';
+    if (/sand|areia/.test(base)) return 'sand';
+    if (/water|agua/.test(base)) return 'water';
+    const fromHint = sanitizeVariantGroup(hintGroup);
+    if (fromHint) return fromHint;
+    const sanitized = base.replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+    return sanitized || undefined;
+}
+
 function cropFrameToDataUrl(
     image: HTMLImageElement,
     sx: number,
@@ -190,6 +204,9 @@ async function saveVariantStripSprite(options: {
     };
     if (group) {
         properties.variantGroup = group;
+    } else {
+        const inferred = inferVariantGroupFromExportName(options.stripBaseName, options.variantGroup);
+        if (inferred) properties.variantGroup = inferred;
     }
 
     const response = await fetch('/api/save-map-sprite', {

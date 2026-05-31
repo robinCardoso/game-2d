@@ -68,6 +68,169 @@ function mergeMapSpriteCalibrationEntry(
   }
 }
 
+function sanitizeMapSpriteFilename(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const cleaned = raw.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function refMatchesMapSprite(ref: string, filename: string): boolean {
+  return ref === filename || ref.startsWith(`${filename}#`);
+}
+
+function collectMapSpriteUsage(filename: string): {
+  filename: string;
+  maps: Array<{ mapId: string; mapFile: string; cellCount: number }>;
+  totalCells: number;
+  variantGroups: string[];
+  isPreviewTile: boolean;
+} {
+  const mapsDir = path.resolve(__dirname, 'public/maps');
+  const maps: Array<{ mapId: string; mapFile: string; cellCount: number }> = [];
+  let totalCells = 0;
+
+  if (fs.existsSync(mapsDir)) {
+    for (const mapFile of fs.readdirSync(mapsDir).filter((f) => f.endsWith('.json'))) {
+      try {
+        const content = JSON.parse(fs.readFileSync(path.join(mapsDir, mapFile), 'utf-8'));
+        let cellCount = 0;
+        const tileRefs = content.tileRefs as Record<string, { ref?: string }> | undefined;
+
+        const countRef = (ref: unknown, id?: unknown): void => {
+          if (typeof ref === 'string' && refMatchesMapSprite(ref, filename)) {
+            cellCount++;
+            return;
+          }
+          if (id !== undefined && tileRefs) {
+            const fromCatalog = tileRefs[String(id)]?.ref;
+            if (typeof fromCatalog === 'string' && refMatchesMapSprite(fromCatalog, filename)) {
+              cellCount++;
+            }
+          }
+        };
+
+        if (content.tiles && typeof content.tiles === 'object') {
+          for (const entries of Object.values(content.tiles as Record<string, unknown>)) {
+            if (!Array.isArray(entries)) continue;
+            for (const entry of entries) {
+              if (Array.isArray(entry) && entry.length >= 3) {
+                countRef(undefined, entry[2]);
+              } else if (entry && typeof entry === 'object') {
+                const obj = entry as { ref?: string; id?: number };
+                countRef(obj.ref, obj.id);
+              }
+            }
+          }
+        }
+
+        if (Array.isArray(content.sparseTiles)) {
+          for (const entry of content.sparseTiles) {
+            if (!Array.isArray(entry) || entry.length < 4) continue;
+            countRef(undefined, entry[3]);
+          }
+        }
+
+        if (cellCount > 0) {
+          maps.push({
+            mapId: typeof content.mapId === 'string' ? content.mapId : mapFile.replace(/\.json$/, ''),
+            mapFile,
+            cellCount,
+          });
+          totalCells += cellCount;
+        }
+      } catch (err) {
+        console.warn(`[Vite Backend] Erro ao escanear mapa ${mapFile}:`, err);
+      }
+    }
+  }
+
+  const variantGroups: string[] = [];
+  let isPreviewTile = false;
+  const variantGroupsPath = path.resolve(__dirname, 'public/tile_variant_groups.json');
+  if (fs.existsSync(variantGroupsPath)) {
+    try {
+      const vg = JSON.parse(fs.readFileSync(variantGroupsPath, 'utf-8'));
+      for (const [groupKey, group] of Object.entries(vg.groups ?? {})) {
+        const preview = (group as { previewTileFileKey?: string }).previewTileFileKey;
+        if (preview === filename) {
+          variantGroups.push(groupKey);
+          isPreviewTile = true;
+        }
+      }
+    } catch (err) {
+      console.warn('[Vite Backend] Erro ao ler tile_variant_groups.json:', err);
+    }
+  }
+
+  const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+  if (fs.existsSync(propertiesPath)) {
+    try {
+      const props = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
+      const group = props[filename]?.variantGroup;
+      if (typeof group === 'string' && group.trim() && !variantGroups.includes(group.trim())) {
+        variantGroups.push(group.trim());
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return { filename, maps, totalCells, variantGroups, isPreviewTile };
+}
+
+function findMapSpritePngPath(filename: string, category?: string): string | null {
+  const mapsDir = path.resolve(__dirname, 'tiles/maps');
+  if (category) {
+    const direct = path.resolve(mapsDir, category, `${filename}.png`);
+    if (fs.existsSync(direct)) return direct;
+  }
+
+  function walk(dir: string): string | null {
+    if (!fs.existsSync(dir)) return null;
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (fs.statSync(full).isDirectory()) {
+        const nested = walk(full);
+        if (nested) return nested;
+      } else if (entry === `${filename}.png`) {
+        return full;
+      }
+    }
+    return null;
+  }
+
+  return walk(mapsDir);
+}
+
+function updateVariantGroupsAfterSpriteDelete(filename: string): void {
+  const variantGroupsPath = path.resolve(__dirname, 'public/tile_variant_groups.json');
+  if (!fs.existsSync(variantGroupsPath)) return;
+
+  const vg = JSON.parse(fs.readFileSync(variantGroupsPath, 'utf-8'));
+  const groups = (vg.groups ?? {}) as Record<string, { previewTileFileKey?: string; label?: string }>;
+  const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+  const props: Record<string, { variantGroup?: string }> = fs.existsSync(propertiesPath)
+    ? JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'))
+    : {};
+
+  for (const [groupKey, group] of Object.entries(groups)) {
+    if (group.previewTileFileKey !== filename) continue;
+
+    const remaining = Object.entries(props)
+      .filter(([key, val]) => key !== filename && val?.variantGroup === groupKey)
+      .map(([key]) => key);
+
+    if (remaining.length === 0) {
+      delete groups[groupKey];
+    } else {
+      group.previewTileFileKey = remaining[0];
+    }
+  }
+
+  vg.groups = groups;
+  fs.writeFileSync(variantGroupsPath, JSON.stringify(vg, null, 2));
+}
+
 function getJsonFiles(dir: string, filesList: string[] = []): string[] {
   if (!fs.existsSync(dir)) return filesList;
   const files = fs.readdirSync(dir);
@@ -118,6 +281,107 @@ export default defineConfig({
       name: 'local-saving-backend',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
+          let reqPath = '';
+          let reqSearch = new URLSearchParams();
+          if (req.url) {
+            try {
+              const parsed = new URL(req.url, 'http://localhost');
+              reqPath = parsed.pathname;
+              reqSearch = parsed.searchParams;
+            } catch {
+              reqPath = req.url.split('?')[0] ?? '';
+            }
+          }
+
+          if (reqPath === '/api/sprite-usage' && req.method === 'GET') {
+            try {
+              const filename = sanitizeMapSpriteFilename(reqSearch.get('filename'));
+              if (!filename) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Parâmetro filename inválido.' }));
+                return;
+              }
+              const usage = collectMapSpriteUsage(filename);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(usage));
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[Vite Backend] Erro em sprite-usage:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+            return;
+          }
+
+          if (reqPath === '/api/delete-map-sprite' && req.method === 'DELETE') {
+            try {
+              const filename = sanitizeMapSpriteFilename(reqSearch.get('filename'));
+              if (!filename) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Parâmetro filename inválido.' }));
+                return;
+              }
+              const category = String(reqSearch.get('category') ?? '')
+                .replace(/[^a-zA-Z0-9_\-/]/g, '')
+                .replace(/\.\./g, '');
+              const force = reqSearch.get('force') === 'true';
+
+              const usage = collectMapSpriteUsage(filename);
+              if (!force && usage.totalCells > 0) {
+                res.statusCode = 409;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error: `Sprite em uso em ${usage.maps.length} mapa(s).`,
+                    maps: usage.maps,
+                    totalCells: usage.totalCells,
+                  })
+                );
+                return;
+              }
+
+              const pngPath = findMapSpritePngPath(filename, category || undefined);
+              if (pngPath && fs.existsSync(pngPath)) {
+                fs.unlinkSync(pngPath);
+                console.log(`[Vite Backend] PNG removido: ${pngPath}`);
+              }
+
+              const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+              if (fs.existsSync(propertiesPath)) {
+                const allProperties = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
+                if (allProperties[filename]) {
+                  delete allProperties[filename];
+                  fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
+                  console.log(`[Vite Backend] tile_properties: removido "${filename}"`);
+                }
+              }
+
+              updateVariantGroupsAfterSpriteDelete(filename);
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  filename,
+                  deletedPng: pngPath ?? null,
+                  variantGroups: usage.variantGroups,
+                })
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[Vite Backend] Erro ao excluir sprite:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+            return;
+          }
+
           // Redireciona o erro de digitação clássico de 'stucio.html' para 'studio.html'
           if (req.url && req.url.toLowerCase().startsWith('/stucio.html')) {
             res.statusCode = 302;

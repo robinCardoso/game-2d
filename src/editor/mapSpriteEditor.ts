@@ -137,6 +137,13 @@ export function initMapSpriteEditor() {
     const serverSelect = document.getElementById('mapSpriteServerSelect') as HTMLSelectElement | null;
     const refreshListBtn = document.getElementById('mapSpriteRefreshListBtn');
     const newSpriteBtn = document.getElementById('mapSpriteNewBtn');
+    const deleteSpriteBtn = document.getElementById('deleteMapSpriteBtn') as HTMLButtonElement | null;
+
+    function syncDeleteSpriteButtonVisible(visible: boolean): void {
+        if (deleteSpriteBtn) {
+            deleteSpriteBtn.style.display = visible ? '' : 'none';
+        }
+    }
 
     // Canvas Preview
     const previewCanvas = document.getElementById('mapSpritePreviewCanvas') as HTMLCanvasElement;
@@ -246,6 +253,7 @@ export function initMapSpriteEditor() {
         offsetYInput.value = '0';
         currentCalibration = null;
         loadedSpriteProperties = undefined;
+        syncDeleteSpriteButtonVisible(false);
 
         syncTerrainPropertiesVisibility();
         if (!options?.silent) {
@@ -385,6 +393,110 @@ export function initMapSpriteEditor() {
         resetToNewSprite();
     });
 
+    deleteSpriteBtn?.addEventListener('click', async () => {
+        if (!serverSelect?.value) {
+            toast.error('Selecione um sprite existente para excluir.');
+            return;
+        }
+
+        const sprite = serverSpritesList.find((s) => s.relativePath === serverSelect.value);
+        if (!sprite?.filename) {
+            toast.error('Sprite não encontrado na lista.');
+            return;
+        }
+
+        const filename = sprite.filename;
+        const displayName = sprite.name || filename;
+
+        try {
+            deleteSpriteBtn.disabled = true;
+            deleteSpriteBtn.innerText = '⌛ Verificando...';
+
+            const usageRes = await fetch(`/api/sprite-usage?filename=${encodeURIComponent(filename)}`);
+            if (!usageRes.ok) {
+                const err = await usageRes.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Falha ao verificar uso do sprite.');
+            }
+
+            const usage = (await usageRes.json()) as {
+                totalCells: number;
+                maps: Array<{ mapFile: string; cellCount: number }>;
+                variantGroups?: string[];
+                isPreviewTile?: boolean;
+            };
+
+            if (usage.totalCells > 0) {
+                const mapLines = usage.maps
+                    .map(
+                        (m) =>
+                            `  • ${m.mapFile} — ${m.cellCount} célula${m.cellCount === 1 ? '' : 's'}`
+                    )
+                    .join('\n');
+                await popup.alert(
+                    `Não é possível excluir "${displayName}".<br><br>Em uso em ${usage.maps.length} mapa${usage.maps.length === 1 ? '' : 's'} (${usage.totalCells} célula${usage.totalCells === 1 ? '' : 's'} no total):<br><br>${mapLines.replace(/\n/g, '<br>')}<br><br>Remova ou substitua no mapa antes de excluir.`,
+                    '⚠️ Sprite em Uso'
+                );
+                return;
+            }
+
+            let confirmBody =
+                `Excluir sprite "${displayName}" permanentemente?<br><br>Esta ação remove o arquivo PNG e os metadados de tile_properties.json.`;
+            if (usage.isPreviewTile && usage.variantGroups?.length) {
+                confirmBody += `<br><br>⚠️ Este sprite é preview do grupo de variação "${usage.variantGroups.join(', ')}". O grupo será atualizado ou removido.`;
+            }
+
+            const confirmed = await popup.confirm(confirmBody, '🗑️ Confirmar Exclusão');
+            if (!confirmed) return;
+
+            deleteSpriteBtn.innerText = '⌛ Excluindo...';
+
+            const deleteUrl =
+                `/api/delete-map-sprite?filename=${encodeURIComponent(filename)}` +
+                `&category=${encodeURIComponent(sprite.category || '')}&force=false`;
+            const deleteRes = await fetch(deleteUrl, { method: 'DELETE' });
+
+            if (deleteRes.status === 409) {
+                const conflict = (await deleteRes.json()) as {
+                    maps?: Array<{ mapFile: string; cellCount: number }>;
+                };
+                const mapLines = (conflict.maps ?? [])
+                    .map(
+                        (m) =>
+                            `  • ${m.mapFile} — ${m.cellCount} célula${m.cellCount === 1 ? '' : 's'}`
+                    )
+                    .join('\n');
+                await popup.alert(
+                    `Não é possível excluir "${displayName}" — entrou em uso durante a operação.<br><br>${mapLines.replace(/\n/g, '<br>')}`,
+                    '⚠️ Sprite em Uso'
+                );
+                return;
+            }
+
+            if (!deleteRes.ok) {
+                const err = await deleteRes.json().catch(() => ({}));
+                throw new Error((err as { error?: string }).error || 'Erro ao excluir sprite.');
+            }
+
+            const result = await deleteRes.json();
+            toast.success(`Sprite "${displayName}" excluído com sucesso!`);
+            console.log('[MapSpriteEditor] Exclusão:', result);
+
+            resetToNewSprite({ silent: true });
+            if (serverSelect) serverSelect.value = '';
+            await reloadServerMapSpritesList();
+            if (afterSaveSpriteHandler) {
+                await afterSaveSpriteHandler();
+            }
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error('[MapSpriteEditor] Falha ao excluir sprite:', err);
+            await popup.alert(`Falha ao excluir sprite: ${msg}`, 'Erro ao Excluir');
+        } finally {
+            deleteSpriteBtn.disabled = false;
+            deleteSpriteBtn.innerText = '🗑️ Excluir';
+        }
+    });
+
     void reloadServerMapSpritesList();
 
     categoryTreeEl?.addEventListener('click', (e) => {
@@ -402,7 +514,12 @@ export function initMapSpriteEditor() {
         }
 
         const sprite = serverSpritesList.find(s => s.relativePath === val);
-        if (!sprite) return;
+        if (!sprite) {
+            syncDeleteSpriteButtonVisible(false);
+            return;
+        }
+
+        syncDeleteSpriteButtonVisible(true);
 
         nameInput.value = sprite.name;
         assetTypeSelect.value = sprite.assetType;

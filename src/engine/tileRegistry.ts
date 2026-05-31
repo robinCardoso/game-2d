@@ -129,6 +129,35 @@ function createNextIdAllocator(start = 7): NextIdAllocator {
     };
 }
 
+/** Inferir variantGroup para strips `_variants` exportados com "Sem grupo" marcado. */
+function inferVariantGroupForStrip(fileName: string, custom?: TileProperties): string | undefined {
+    const explicit = custom?.variantGroup?.trim();
+    if (explicit) return explicit;
+
+    const stripFrames = Number(custom?.variantStripFrames) || 0;
+    const looksLikeStrip =
+        /_var_variants$/i.test(fileName) ||
+        /_variants$/i.test(fileName) ||
+        stripFrames > 1;
+    if (!looksLikeStrip) return undefined;
+
+    let base = fileName
+        .replace(/_var_variants$/i, '')
+        .replace(/_variants$/i, '')
+        .replace(/^\d+-/, '')
+        .replace(/-/g, '_')
+        .toLowerCase();
+
+    if (/grama|grass/.test(base)) return 'grass';
+    if (/pedra|stone|ground_pedra|ground/.test(base)) return 'stone';
+    if (/dirt|terra|earth/.test(base)) return 'dirt';
+    if (/sand|areia/.test(base)) return 'sand';
+    if (/water|agua/.test(base)) return 'water';
+
+    const sanitized = base.replace(/[^a-z0-9_]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+    return sanitized || undefined;
+}
+
 function registerVariantStrip(
     registry: TileRegistry,
     ids: NextIdAllocator,
@@ -149,6 +178,11 @@ function registerVariantStrip(
         props.nameOverride ||
         fileName.replace(/_/g, ' ');
     const { variantStripFrames: _stripMeta, ...customWithoutStrip } = custom ?? {};
+    const resolvedGroup = inferVariantGroupForStrip(fileName, custom);
+    const stripProps = {
+        ...customWithoutStrip,
+        ...(resolvedGroup ? { variantGroup: resolvedGroup } : {}),
+    };
 
     for (let i = 0; i < stripFrames; i++) {
         const frameId = ids.take();
@@ -168,7 +202,7 @@ function registerVariantStrip(
             variantStripIndex: i,
             variantStripFrames: stripFrames,
             ...props,
-            ...customWithoutStrip,
+            ...stripProps,
         };
     }
 }

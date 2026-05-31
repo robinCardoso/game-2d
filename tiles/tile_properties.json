@@ -16,5 +16,23 @@
     "assetType": "terrain",
     "variantGroup": "grass",
     "variantStripFrames": 20
+  },
+  "ground_pedra_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "ground_pedra_variants",
+    "assetType": "terrain",
+    "variantGroup": "stone",
+    "variantStripFrames": 4,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 4,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
   }
 }
