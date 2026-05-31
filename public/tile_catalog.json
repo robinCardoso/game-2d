@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-05-31T13:00:34.289Z",
+  "generatedAt": "2026-05-31T13:06:03.547Z",
   "tileSize": 32,
   "format": "game-2d/map-sparse-v1",
   "coordSystem": {
@@ -46,10 +46,10 @@
       "brushId": 9001,
       "label": "Pedra aleatório",
       "memberIds": [
+        27,
         28,
         29,
-        30,
-        31
+        30
       ]
     }
   },
@@ -236,13 +236,6 @@
     },
     {
       "id": 27,
-      "name": "01 grama",
-      "ref": "01_grama",
-      "category": "ground",
-      "walkable": true
-    },
-    {
-      "id": 28,
       "name": "ground_pedra_variants · 1",
       "ref": "ground_pedra_variants#0",
       "category": "ground",
@@ -251,7 +244,7 @@
       "variantIndex": 0
     },
     {
-      "id": 29,
+      "id": 28,
       "name": "ground_pedra_variants · 2",
       "ref": "ground_pedra_variants#1",
       "category": "ground",
@@ -260,7 +253,7 @@
       "variantIndex": 1
     },
     {
-      "id": 30,
+      "id": 29,
       "name": "ground_pedra_variants · 3",
       "ref": "ground_pedra_variants#2",
       "category": "ground",
@@ -269,7 +262,7 @@
       "variantIndex": 2
     },
     {
-      "id": 31,
+      "id": 30,
       "name": "ground_pedra_variants · 4",
       "ref": "ground_pedra_variants#3",
       "category": "ground",
