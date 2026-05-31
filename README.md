@@ -52,6 +52,10 @@ Copie `.env.example` → `.env`. Supabase: rode `supabase/schema.sql` no SQL Edi
 
 ## Docs
 
+- [AGENTS.md](AGENTS.md) — guia para agentes IA (invariantes, links)
+- [Melhorias do Studio](docs/studio-improvements-log.md) — calibrador, mapas, exclusão de sprites
+- [Formato de mapa](docs/map-format.md) — `MapDocument`, resolução por `ref`
+- [Sprites de mapa](docs/sprite-exporter-walkthrough.md) — calibrador e APIs dev
 - [Jornada do jogador](docs/player-journey.md)
 - [Mapas instanciados e multiplayer](docs/instanced-maps-and-multiplayer.md)
 - [Game server](server/README.md)

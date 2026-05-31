@@ -86,7 +86,7 @@ Só são serializadas **células pintadas**. Mapa vazio = sem chave `tiles`.
 - Chave = andar **Z** como string (`"0"`, `"-1"`, `"3"`)
 - Valor = array de células `{ x, y, id, ref? }`
 - Ordenação ao salvar: **Y crescente**, depois **X**
-- `ref` é **informativo** (legível para IA/Git); a engine resolve pelo **`id`**
+- **`ref` é a fonte de verdade estável** (`grama_20_var_variants#3`); o **`id` numérico** é resolvido em runtime pelo registry (`src/engine/tileRefResolver.ts`)
 
 ### Campo `tileRefs`
 
@@ -156,17 +156,20 @@ Strip detectado quando largura PNG = `N × tileSize` ou `variantStripFrames` em 
 
 ## Tiles, IDs e variantes aleatórias
 
-### IDs numéricos
+### IDs numéricos vs `ref`
 
-- Atribuídos em runtime por `buildTileRegistryAsync()` (`src/engine/tileRegistry.ts`)
-- **Não são estáveis entre sessões** se a ordem de PNGs no disco mudar
-- Para IA/scripts: preferir validar com `ref` + `tileRefs`, mas a engine grava **`id`**
+- Atribuídos em runtime por `buildTileRegistryAsync()` (`src/engine/tileRegistry.ts`), em ordem **alfabética de path** (determinístico).
+- **Ids ainda podem mudar** se PNGs forem adicionados/removidos — por isso mapas salvos incluem **`ref` por célula** e bloco **`tileRefs`**.
+- **No load:** `loadMapFromJson(..., tileRegistry)` resolve `ref` → id atual via `tileRefResolver.ts`; fallback por `tileRefs[id].ref` se a célula só tiver id legado.
+- **No save:** `serializeMapDocument` enriquece células com `ref` a partir do registry.
+- **Para IA/scripts:** usar **`ref`** como identificador estável; validar ids contra `tile_catalog.json` só após o registry carregar.
 
 ### Pincéis aleatórios (🎲)
 
 - IDs virtuais **9000–9999** (`VARIANT_BRUSH_ID_BASE`)
-- Existem **só na paleta do editor** — sorteiam variantes ao pintar
-- **Mapas salvos nunca devem usar brush id** — apenas ids concretos das variantes
+- Existem **só na paleta do editor** — `resolvePaintTileId()` sorteia variante **apenas ao pintar**
+- **Renderização e mapas salvos:** ids **fixos** por célula; **nunca** persistir brush id 9000+
+- **Não confundir:** tile com `variantStripIndex` na paleta pinta **frame fixo**; só o ícone 🎲 do grupo sorteia
 - IA: escolher um id de `variantBrushes.grass.memberIds` ou variantes do catálogo com mesmo `variantGroup`
 
 ### Grupos de variação
@@ -198,8 +201,16 @@ Sanitização: `src/engine/mapImportSanitizer.ts` (`sanitizeTilesByFloor`, `sani
 ## Pipeline no código
 
 ```
-Pintura (worldMap em memória, grade densa 256×256×15)
+buildTileRegistryAsync()  →  tileRegistryReady
         │
+        ▼
+loadMapFromJson(raw, spawn, tileRegistry)
+        │  deserializeMapDocument
+        │  resolveTilesByFloor (ref → id)
+        │  remapWorldMapTileIds (fallback tileRefs)
+        ▼
+Pintura (worldMap em memória, grade densa 256×256×15)
+        │  resolvePaintTileId só ao pintar com 🎲
         ▼
 serializeMapDocument(worldMap, { tileRegistry, spawn, ... })
         │  collectSparseTiles → groupSparseEntriesByFloor
@@ -215,6 +226,8 @@ POST /api/save-map  →  public/maps/<id>.json
 |--------|---------|
 | `serializeMapDocument` | `src/engine/worldMap.ts` |
 | `deserializeMapDocument` / `loadMapFromJson` | `src/engine/worldMap.ts` |
+| `resolveMapTileId` / `remapWorldMapTileIds` | `src/engine/tileRefResolver.ts` |
+| `buildTileRegistryAsync` | `src/engine/tileRegistry.ts` |
 | `formatMapDocumentJson` | `src/engine/mapDocumentFormat.ts` |
 | `buildFullTileCatalog` | `src/engine/tileCatalog.ts` |
 | Save dev | `src/utils/mapDevSave.ts` |
@@ -279,7 +292,7 @@ Ideias alinhadas ao formato atual — implementar incrementando `format` ou `ver
 
 | Melhoria | Benefício |
 |----------|-----------|
-| **IDs estáveis por `ref`** | Loader resolve `ref` → id; IA não depende de ordem de PNGs |
+| ~~**IDs estáveis por `ref`**~~ ✅ | Implementado: `tileRefResolver.ts` + `ref` por célula no save/load |
 | **`format: map-sparse-v2` com chunks** | Regiões 16×16 para mapas enormes sem array gigante |
 | **RLE por linha** | `"rows": { "0": { "47": [[42,13],[43,16]] } }` — menos repetitivo |
 | **Validação no save** | Rejeitar ids inexistentes, coords fora da grade |
@@ -300,5 +313,8 @@ Ao implementar qualquer item, atualizar:
 ## Referências cruzadas
 
 - [architecture.md](./architecture.md) — visão geral da engine
+- [studio-improvements-log.md](./studio-improvements-log.md) — melhorias recentes (calibrador, registry, exclusão)
+- [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md) — calibrador e APIs de sprite
 - [instanced-maps-and-multiplayer.md](./instanced-maps-and-multiplayer.md) — mapas instanciados
+- Regra agente: `.cursor/rules/studio-map-sprites.mdc`
 - Plano tiles aleatórios: `.cursor/plans/tiles_aleatórios_estilo_tibia_6650291f.plan.md`

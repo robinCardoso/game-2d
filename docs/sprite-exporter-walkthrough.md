@@ -102,3 +102,76 @@ Para evitar problemas de fusão ou desconfiguração de sprites nos catálogos, 
    * **Fluxo Recomendado**: Exclua o sprite usando o botão vermelho **`🗑️ Excluir Sprite`** (isso apagará de forma limpa todas as chaves e arquivos JSON), corrija o nome/arquivo original e re-exporte do zero.
 3. **Consistência no Recarregamento**:
    * A engine recalcula dinamicamente os catálogos baseando-se em `tile_properties.json` e nos arquivos físicos de PNG toda vez que a página do Studio é recarregada. Caso note qualquer inconsistência de renderização visual, dê um refresh (`F5`) no Studio para recalcular o cache.
+   * **Mapas salvos devem permanecer idênticos após F5** — se mudarem, verificar: (1) `loadMapFromJson` recebe `tileRegistry`, (2) células têm `ref`, (3) registry usa `buildTileRegistryAsync()` em ordem de path.
+
+---
+
+## 🗺️ 6. Carregamento Estável de Mapas (`tileRefResolver`)
+
+### Sintoma corrigido
+Mapa renderizava tiles diferentes a cada refresh (F5), como se houvesse random na renderização.
+
+### Causa
+- IDs numéricos atribuídos na ordem de carregamento assíncrono de imagens (não determinística).
+- Loader ignorava `ref` / `tileRefs` e confiava só no `id` do JSON.
+
+### Solução
+| Componente | Papel |
+|------------|--------|
+| `buildTileRegistryAsync()` | Registra tiles em ordem alfabética de path |
+| `tileRefResolver.ts` | Resolve `ref` da célula → id atual do registry |
+| `loadMapFromJson(..., tileRegistry)` | Obrigatório passar registry após `tileRegistryReady` |
+| `reloadTileRegistry()` | Remapeia mapa via snapshot serializado com refs |
+
+### Regra de ouro
+**Random (`Math.random`) só em `resolvePaintTileId()` ao pintar com pincel 🎲.** Mapas salvos guardam ids/refs fixos; o `draw()` nunca sorteia variantes.
+
+---
+
+## 🎛️ 7. Calibrador ao Editar Sprite Existente
+
+### Sintoma corrigido
+Ao reabrir calibrador de sprite salva, grade aparecia 1×1 ou frames 64×64 incorretos.
+
+### Solução (`mapSpriteCalibration.ts`)
+- `inferMapSpriteCalibration()` — infere cols/rows a partir de largura PNG ÷ 32 e `variantStripFrames` em `tile_properties.json`.
+- `mapSpriteEditor.ts` sincroniza formulário ao selecionar sprite ou importar PNG.
+- Calibrador recebe `initialGridCols` / `initialGridRows` e chama `applyGridDivision()` quando > 1.
+- Calibração persistida no save (`frameWidth`, `gridCols`, `sheetLayout`, etc.).
+
+### Multi-seleção (regressão evitada)
+- Evento `click` dedicado no canvas do calibrador.
+- Drag desativado com multi-select ativo.
+- Checkbox resetado ao abrir modal; listeners com `AbortController`.
+
+---
+
+## 🖼️ 8. Paleta Tileset vs Seletor Criar Sprites
+
+| UI | Fonte de dados | Escopo |
+|----|----------------|--------|
+| Paleta **Tileset** (`#tileSelector`) | Glob Vite `tiles/**/*.png` | Todos os tiles (mapas, escadas, etc.) |
+| **Criar Sprites** (`#mapSpriteServerSelect`) | `GET /api/list-map-sprites` | Só `tiles/maps/**/*.png` |
+
+Um PNG em `tiles/maps/grass/01_grama.png` pode aparecer nos dois lugares com rótulos diferentes. **Não é bug** — são listagens distintas.
+
+Chave em `tile_properties.json` = **nome do arquivo sem `.png`** (ex. `01_grama`, não entradas órfãs como `01_grama_randon`).
+
+---
+
+## 🗑️ 9. UI de Exclusão (Criar Sprites)
+
+- Botão **`🗑️ Excluir Sprite`** — `#deleteMapSpriteBtn` em `studio.html`.
+- Implementação: `mapSpriteEditor.ts` → `GET /api/sprite-usage` → confirmação → `DELETE /api/delete-map-sprite`.
+- Visível apenas quando há sprite selecionado na lista do painel.
+- Após exclusão: `reloadTileRegistry()` + refresh da paleta.
+
+> APIs disponíveis apenas em **`npm run dev`** (middleware Vite). Reiniciar dev server após alterações em `vite.config.ts`.
+
+---
+
+## 📚 10. Documentação relacionada
+
+- [studio-improvements-log.md](./studio-improvements-log.md) — log consolidado e checklist de regressão
+- [map-format.md](./map-format.md) — formato esparso, resolução por `ref`
+- Regra Cursor (agente): `.cursor/rules/studio-map-sprites.mdc`

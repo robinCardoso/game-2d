@@ -39,6 +39,9 @@
 - Assets PNG em `tiles/**`; variant strips = largura `N × TILE_SIZE`
 - Colisão: hitbox proporcional via `collisionHitboxSize()`
 - Catálogo para mapas/IA: `public/tile_catalog.json` (ver [map-format.md](./map-format.md))
+- **Registry:** `buildTileRegistryAsync()` — ordem alfabética de path; strips expandem em `fileKey#N`
+- **Resolução de mapa:** `tileRefResolver.ts` — `ref` estável no JSON, id numérico em runtime
+- **Random 🎲:** só ao pintar (`resolvePaintTileId`); ver [studio-improvements-log.md](./studio-improvements-log.md)
 
 ## Formato de mapa (`MapDocument` v1)
 

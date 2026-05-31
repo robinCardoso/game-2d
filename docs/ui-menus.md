@@ -22,6 +22,20 @@
 
 `exportBtn`, `importMapBtn`, `tileSelector`, `floorSelector`, `roleSelector`, `collisionToggle`, `boatToggle`, `posX`…`posZ`, dev buttons.
 
+## Criar Sprites (mapa)
+
+Painel **Criar Sprites** (`data-panel="mapSprites"` ou equivalente no `studio.html`):
+
+| Elemento | ID | Função |
+|----------|-----|--------|
+| Lista de sprites | `#mapSpriteServerSelect` | Só PNGs em `tiles/maps/**` (API) |
+| Excluir | `#deleteMapSpriteBtn` | Verifica uso → remove PNG + metadados |
+| Calibrador | aberto via painel | Multi-select, export strip, grade inferida |
+
+Paleta **Tileset** (`#tileSelector`) lista **todos** os PNGs em `tiles/**` — escopo diferente do seletor acima.
+
+Documentação: [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md), [studio-improvements-log.md](./studio-improvements-log.md).
+
 ## Player vs GM
 
 Elementos com `data-requires-edit="true"` somem quando cargo = Player (`setEditorMenusVisible`).

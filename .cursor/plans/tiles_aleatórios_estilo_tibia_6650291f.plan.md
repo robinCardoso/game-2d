@@ -26,12 +26,34 @@ todos:
   - id: manifest-phase2
     content: "Opcional: tile_variant_groups.json (label, pesos, preview)"
     status: completed
+  - id: stable-map-load
+    content: "tileRefResolver + registry determinístico + ref por célula (anti-regressão F5)"
+    status: completed
+  - id: variant-group-failsafe
+    content: "inferVariantGroupForStrip + export batch inferido para strips *_variants"
+    status: completed
+  - id: sprite-delete-flow
+    content: "GET sprite-usage + DELETE delete-map-sprite + botão Excluir no Criar Sprites"
+    status: completed
+  - id: calibrator-map-fixes
+    content: "Multi-select calibrador + inferMapSpriteCalibration ao editar sprite"
+    status: completed
 isProject: false
 ---
 
 # Plano: tiles com variação aleatória (estilo Tibia)
 
-## Prioridade: UI primeiro
+> **Pós-implementação (2026-05-31):** melhorias de estabilidade e UX documentadas em [docs/studio-improvements-log.md](../../docs/studio-improvements-log.md). Regra anti-regressão: [.cursor/rules/studio-map-sprites.mdc](../rules/studio-map-sprites.mdc).
+
+## Invariantes (não regredir)
+
+1. **Random só na pintura** — `resolvePaintTileId()`; mapa salvo = ids/refs fixos.
+2. **Load com registry** — `await tileRegistryReady` antes de `loadMapFromJson(..., tileRegistry)`.
+3. **Ref estável** — células com `ref`; resolver via `tileRefResolver.ts`.
+4. **Strips sem grupo** — fail-safe `inferVariantGroupForStrip()` → pincel 🎲 na paleta.
+5. **Exclusão** — sempre `sprite-usage` antes de apagar PNG/metadados.
+
+---
 
 A lógica de sorteio (`resolvePaintTileId`) vem **depois** da UI estar definida e navegável. Ordem de entrega:
 
