@@ -1,5 +1,5 @@
 import { isVariantBrush } from '../engine/tileVariants';
-import { toast } from '../utils/popup';
+import { fetchBorderSets } from './borderSetApi';
 
 export interface BorderSetUiEntry {
     id: string;
@@ -7,20 +7,33 @@ export interface BorderSetUiEntry {
     fillTerrain: string;
 }
 
-/** Conjuntos mock até existir API/manifest. */
-const MOCK_BORDER_SETS: BorderSetUiEntry[] = [
-    { id: 'grass_edges', label: 'Bordas de grama', fillTerrain: 'grass' },
-];
+/** Fallback quando a API não retorna conjuntos. */
+const FALLBACK_BORDER_SETS: BorderSetUiEntry[] = [];
 
-let borderSets: BorderSetUiEntry[] = [...MOCK_BORDER_SETS];
+let borderSets: BorderSetUiEntry[] = [...FALLBACK_BORDER_SETS];
 
 export function getMockBorderSets(): BorderSetUiEntry[] {
     return [...borderSets];
 }
 
 export function setBorderSetsForUi(sets: BorderSetUiEntry[]): void {
-    borderSets = sets.length > 0 ? [...sets] : [...MOCK_BORDER_SETS];
+    borderSets = [...sets];
     populateBorderSetSelect();
+}
+
+export async function reloadBorderSetsFromServer(): Promise<void> {
+    try {
+        const sets = await fetchBorderSets();
+        setBorderSetsForUi(
+            sets.map((s) => ({
+                id: s.id,
+                label: s.label,
+                fillTerrain: s.fillTerrain,
+            }))
+        );
+    } catch (err) {
+        console.warn('[AutoBorderUi] Não foi possível carregar conjuntos:', err);
+    }
 }
 
 function getEl<T extends HTMLElement>(id: string): T | null {
@@ -101,7 +114,7 @@ export function notifyAutoBorderGrassBrushSelected(): void {
     }
     populateBorderSetSelect('grass');
     const select = getEl<HTMLSelectElement>('autoBorderSetSelect');
-    const grassSet = borderSets.find((s) => s.id === 'grass_edges' && s.fillTerrain === 'grass');
+    const grassSet = borderSets.find((s) => s.fillTerrain === 'grass');
     if (select && grassSet) {
         select.value = grassSet.id;
     }
@@ -112,12 +125,27 @@ export function isAutoBorderEnabled(): boolean {
     return getEl<HTMLInputElement>('autoBorderEnabledToggle')?.checked ?? false;
 }
 
-export function initAutoBorderUi(): void {
+export function getActiveBorderSet(): BorderSetUiEntry | undefined {
+    if (!isAutoBorderEnabled()) return undefined;
+    const set = getSelectedBorderSet();
+    return set?.id ? set : undefined;
+}
+
+export function initAutoBorderUi(options?: { onRecalcFloor?: (floorZ: number) => void }): void {
     const toggle = getEl<HTMLInputElement>('autoBorderEnabledToggle');
     const select = getEl<HTMLSelectElement>('autoBorderSetSelect');
     const recalcBtn = getEl<HTMLButtonElement>('autoBorderRecalcFloorBtn');
 
     populateBorderSetSelect();
+    void reloadBorderSetsFromServer().then(() => {
+        if (recalcBtn) {
+            recalcBtn.disabled = borderSets.length === 0;
+            recalcBtn.title =
+                borderSets.length === 0
+                    ? 'Salve um conjunto auto-borda em Criar Sprites primeiro'
+                    : 'Recalcula bordas em todo o andar de edição';
+        }
+    });
 
     toggle?.addEventListener('change', () => {
         syncToolbarActiveState();
@@ -128,7 +156,8 @@ export function initAutoBorderUi(): void {
     });
 
     recalcBtn?.addEventListener('click', () => {
-        toast.info('Recalcular andar estará disponível quando o motor de auto-borda for implementado.');
+        if (recalcBtn.disabled) return;
+        options?.onRecalcFloor?.(0);
     });
 
     syncToolbarActiveState();

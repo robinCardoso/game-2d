@@ -1,6 +1,7 @@
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import { computeFrameDimensionsFromGrid } from './calibratorGrid';
 import { createBorderSetCalibratorUi, type BorderSetCellAssignment } from './borderSetCalibratorUi';
+import { inferBorderSlotGrid } from './borderSetExport';
 import { toast, popup } from '../utils/popup';
 
 export interface CalibratorOpenOptions {
@@ -10,6 +11,10 @@ export interface CalibratorOpenOptions {
     initialGridRows?: number;
     /** Modo borderSet: rótulo fill (ex. grass) */
     borderSetFillTerrain?: string;
+    /** Células salvas ao reeditar conjunto auto-borda */
+    initialBorderSetCells?: BorderSetCellAssignment[];
+    initialBorderSlotCols?: number;
+    initialBorderSlotRows?: number;
     /** Modo mapa: abre diálogo de exportação em lote da grade inteira */
     onBatchExport?: (result: CalibrationResult, scope: 'all' | 'selected') => void;
 }
@@ -35,6 +40,8 @@ export interface CalibrationResult {
     borderSetCells?: BorderSetCellAssignment[];
     gridCols?: number;
     gridRows?: number;
+    borderSlotCols?: number;
+    borderSlotRows?: number;
 }
 
 export function openCharacterCalibrator(
@@ -182,6 +189,17 @@ export function openCharacterCalibrator(
     let localGridCols = Math.max(1, options?.initialGridCols ?? (isMapMode ? 1 : 1));
     let localGridRows = Math.max(1, options?.initialGridRows ?? (isMapMode ? 1 : 1));
 
+    const savedBorderCells = options?.initialBorderSetCells ?? [];
+    const inferredSlotGrid = inferBorderSlotGrid(savedBorderCells);
+    let borderSlotCols = Math.max(
+        1,
+        options?.initialBorderSlotCols ?? inferredSlotGrid.cols
+    );
+    let borderSlotRows = Math.max(
+        1,
+        options?.initialBorderSlotRows ?? inferredSlotGrid.rows
+    );
+
     // Ajusta o Canvas para a imagem real
     canvas.width = imageW;
     canvas.height = imageH;
@@ -248,7 +266,7 @@ export function openCharacterCalibrator(
         calFrameHeightInput.value = String(localFrameHeight);
         updateDivisionPreview(result);
         renderCalibrator();
-        if (borderSetUi) {
+        if (borderSetUi && !isBorderSetMode) {
             borderSetUi.rebuildCellList(localGridCols, localGridRows);
         }
         if (showToast) {
@@ -335,8 +353,8 @@ export function openCharacterCalibrator(
 
     calZoomInput.addEventListener('input', updateZoom);
 
-    let selectedFrameCol = 0;
-    let selectedFrameRow = 0;
+    let selectedFrameCol = isMapMode || isBorderSetMode ? -1 : 0;
+    let selectedFrameRow = isMapMode || isBorderSetMode ? -1 : 0;
     let syncingMapFrameUI = false;
     let mapMultiSelectMode = false;
     const selectedFramesList: Array<{ col: number; row: number }> = [];
@@ -440,9 +458,13 @@ export function openCharacterCalibrator(
         return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
     }
 
+    function hasMapFrameSelection(): boolean {
+        return selectedFrameCol >= 0 && selectedFrameRow >= 0;
+    }
+
     function clampFrameSelection(): void {
         const { cols, rows } = getVisibleGridSize();
-        if (cols < 1 || rows < 1) return;
+        if (cols < 1 || rows < 1 || !hasMapFrameSelection()) return;
         selectedFrameCol = Math.min(Math.max(0, selectedFrameCol), cols - 1);
         selectedFrameRow = Math.min(Math.max(0, selectedFrameRow), rows - 1);
     }
@@ -465,19 +487,26 @@ export function openCharacterCalibrator(
                     selectionCount > 0
                         ? `Último clique: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1}`
                         : 'Nenhum tile marcado ainda';
-            } else {
+            } else if (hasMapFrameSelection()) {
                 const idx = selectedFrameRow * cols + selectedFrameCol + 1;
                 calMapFrameSummary.textContent = total > 0
                     ? `Selecionado: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1} (índice ${idx} de ${total})`
                     : `Selecionado: col ${selectedFrameCol + 1}, linha ${selectedFrameRow + 1}`;
+            } else {
+                calMapFrameSummary.textContent = 'Nenhum tile selecionado — clique na imagem';
             }
         }
         if (calMapFrameColInput && calMapFrameRowInput && !mapMultiSelectMode) {
             syncingMapFrameUI = true;
             calMapFrameColInput.max = String(Math.max(1, cols));
             calMapFrameRowInput.max = String(Math.max(1, rows));
-            calMapFrameColInput.value = String(selectedFrameCol + 1);
-            calMapFrameRowInput.value = String(selectedFrameRow + 1);
+            if (hasMapFrameSelection()) {
+                calMapFrameColInput.value = String(selectedFrameCol + 1);
+                calMapFrameRowInput.value = String(selectedFrameRow + 1);
+            } else {
+                calMapFrameColInput.value = '';
+                calMapFrameRowInput.value = '';
+            }
             syncingMapFrameUI = false;
         }
     }
@@ -521,14 +550,8 @@ export function openCharacterCalibrator(
                 // Grade vermelha padrão
                 ctx.strokeRect(x, y, localFrameWidth, localFrameHeight);
 
-                // Destaque do primeiro frame
-                if (r === 0 && c === 0) {
-                    ctx.fillStyle = 'rgba(0, 255, 255, 0.8)';
-                    ctx.fillRect(x + localFrameWidth / 2 - 2, y + localFrameHeight / 2 - 2, 4, 4);
-                }
-
                 // Destaque do(s) frame(s) em modo mapa
-                if (isMapMode) {
+                if (isMapMode && hasMapFrameSelection()) {
                     const multiIdx = mapMultiSelectMode
                         ? findSelectedFrameIndex(c, r)
                         : -1;
@@ -601,7 +624,7 @@ export function openCharacterCalibrator(
             }
         }
 
-        if (isBorderSetMode && borderSetUi) {
+        if (isBorderSetMode && borderSetUi?.hasActiveSlot()) {
             const active = borderSetUi.getActiveCell();
             const src = borderSetUi.getSourceAt(active.col, active.row);
             if (src.col >= 0 && src.col < cols && src.row >= 0 && src.row < rows) {
@@ -659,12 +682,15 @@ export function openCharacterCalibrator(
             if (isMapMode) {
                 applyFramePick(picked.col, picked.row);
             } else if (isBorderSetMode && borderSetUi) {
-                borderSetUi.handleCanvasPick(picked.col, picked.row);
-                renderCalibrator();
-                toast.info(
-                    `Tile sheet Col ${picked.col + 1} · Lin ${picked.row + 1} associado ao slot ativo.`,
-                    2800
-                );
+                if (borderSetUi.handleCanvasPick(picked.col, picked.row)) {
+                    renderCalibrator();
+                    toast.info(
+                        `Tile sheet Col ${picked.col + 1} · Lin ${picked.row + 1} associado ao slot ativo.`,
+                        2800
+                    );
+                } else {
+                    toast.info('Selecione um slot à direita antes de clicar na imagem.');
+                }
             }
         },
         { signal }
@@ -768,13 +794,21 @@ export function openCharacterCalibrator(
     });
 
     calBorderPreset3x3?.addEventListener('click', () => {
-        applyGridDivision(3, 3, true);
+        borderSlotCols = 3;
+        borderSlotRows = 3;
         borderSetUi?.applyPreset(3, 3);
+        toast.info(
+            'Grade 3×3 de slots: escolha o número da máscara (1, 2, 4, 8…) em cada slot — não é o índice do slot.'
+        );
     });
 
     calBorderPreset4x4?.addEventListener('click', () => {
-        applyGridDivision(4, 4, true);
-        borderSetUi?.applyPreset(4, 4);
+        borderSlotCols = 4;
+        borderSlotRows = 1;
+        borderSetUi?.applyCardinalPreset();
+        toast.info(
+            '4 slots cardinais (máscaras 1=N, 2=E, 4=S, 8=O). Clique cada tile da sheet na imagem.'
+        );
     });
 
     [calGridColsInput, calGridRowsInput].forEach((el) => {
@@ -910,6 +944,10 @@ export function openCharacterCalibrator(
                 toast.error('A grade está em 1×1 — a imagem inteira seria exportada. Defina colunas/linhas e aplique a divisão antes de confirmar.');
                 return;
             }
+            if (!mapMultiSelectMode && !hasMapFrameSelection()) {
+                toast.error('Clique em um tile da imagem para selecionar o frame antes de confirmar.');
+                return;
+            }
         }
         syncUIToAnimation();
         onConfirm({
@@ -925,8 +963,8 @@ export function openCharacterCalibrator(
             currentState: activeState,
             currentDirection: activeDirection,
             sheetLayout: localSheetLayout,
-            selectedFrameCol: selectedFrameCol,
-            selectedFrameRow: selectedFrameRow
+            selectedFrameCol: hasMapFrameSelection() ? selectedFrameCol : undefined,
+            selectedFrameRow: hasMapFrameSelection() ? selectedFrameRow : undefined,
         });
         closeModal();
     });
@@ -937,8 +975,7 @@ export function openCharacterCalibrator(
             toast.error('Defina a grade (Aplicar divisão) antes de confirmar.');
             return;
         }
-        const { cols, rows } = getVisibleGridSize();
-        const cells = borderSetUi.getAssignments(cols, rows);
+        const cells = borderSetUi.getAssignments(borderSlotCols, borderSlotRows);
         onConfirm({
             frameWidth: localFrameWidth,
             frameHeight: localFrameHeight,
@@ -953,8 +990,10 @@ export function openCharacterCalibrator(
             currentDirection: activeDirection,
             sheetLayout: localSheetLayout,
             borderSetCells: cells,
-            gridCols: cols,
-            gridRows: rows,
+            gridCols: localGridCols,
+            gridRows: localGridRows,
+            borderSlotCols,
+            borderSlotRows,
         });
         closeModal();
     });
@@ -962,7 +1001,10 @@ export function openCharacterCalibrator(
     // Inicialização do Modal
     if (isBorderSetMode) {
         applyGridDivision(localGridCols, localGridRows, false);
-        borderSetUi?.rebuildCellList(localGridCols, localGridRows);
+        borderSetUi?.rebuildCellList(borderSlotCols, borderSlotRows);
+        if (savedBorderCells.length > 0) {
+            borderSetUi?.loadAssignments(savedBorderCells, borderSlotCols, borderSlotRows);
+        }
     } else if (isMapMode && (localGridCols > 1 || localGridRows > 1)) {
         applyGridDivision(localGridCols, localGridRows, false);
     } else if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {

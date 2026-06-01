@@ -21,6 +21,7 @@ import {
     MAP_SCHEMA_PATH,
 } from './tileCatalog';
 import { remapWorldMapTileIds, resolveTilesByFloor } from './tileRefResolver';
+import { deserializeLayerMaps, serializeLayerMaps, type LayerMap } from './mapPaintLayers';
 import type { MapDocument, MapTileEntry, SparseTileEntry, SpawnPoint, TileRegistry, WorldMap } from './types';
 
 const { MAP_SIZE, MIN_FLOOR_Z, MAX_FLOOR_Z, EMPTY_TILE_ID } = ENGINE_CONFIG;
@@ -140,6 +141,8 @@ export function serializeMapDocument(
         spawns?: import('./types').CreatureSpawn[];
         portals?: import('./types').PortalData[];
         tileRegistry?: TileRegistry;
+        grassOverlay?: LayerMap;
+        borderOverlay?: LayerMap;
     } = {}
 ): MapDocument {
     const size = options.size ?? MAP_SIZE;
@@ -170,6 +173,34 @@ export function serializeMapDocument(
             const refs = buildTileRefsForMap(options.tileRegistry, usedIds);
             if (Object.keys(refs).length > 0) {
                 doc.tileRefs = refs;
+            }
+        }
+    }
+
+    const layerDoc = serializeLayerMaps(
+        options.grassOverlay ?? {},
+        options.borderOverlay ?? {},
+        size
+    );
+    if (layerDoc) {
+        doc.layers = layerDoc;
+        if (options.tileRegistry && doc.layers) {
+            if (doc.layers.grass) {
+                doc.layers.grass = enrichTilesWithRefs(doc.layers.grass, options.tileRegistry);
+            }
+            if (doc.layers.border) {
+                doc.layers.border = enrichTilesWithRefs(doc.layers.border, options.tileRegistry);
+            }
+            const layerIds = new Set<number>();
+            for (const floor of Object.values(doc.layers.grass ?? {})) {
+                for (const e of floor) layerIds.add(e.id);
+            }
+            for (const floor of Object.values(doc.layers.border ?? {})) {
+                for (const e of floor) layerIds.add(e.id);
+            }
+            if (layerIds.size > 0 && options.tileRegistry) {
+                const refs = buildTileRefsForMap(options.tileRegistry, layerIds);
+                doc.tileRefs = { ...(doc.tileRefs ?? {}), ...refs };
             }
         }
     }
@@ -240,7 +271,19 @@ export function loadMapFromJson(
     raw: unknown,
     fallbackSpawn?: SpawnPoint,
     tileRegistry?: TileRegistry
-): { worldMap: WorldMap; spawn: SpawnPoint; name: string; mapId?: string; size: number; metadata: Record<string, import('./types').TileMetadata>; houses: Record<number, import('./types').HouseData>; spawns: import('./types').CreatureSpawn[]; portals: import('./types').PortalData[] } {
+): {
+    worldMap: WorldMap;
+    grassOverlay?: LayerMap;
+    borderOverlay?: LayerMap;
+    spawn: SpawnPoint;
+    name: string;
+    mapId?: string;
+    size: number;
+    metadata: Record<string, import('./types').TileMetadata>;
+    houses: Record<number, import('./types').HouseData>;
+    spawns: import('./types').CreatureSpawn[];
+    portals: import('./types').PortalData[];
+} {
     if (!raw || typeof raw !== 'object') {
         throw new Error('JSON de mapa inválido');
     }
@@ -264,9 +307,12 @@ export function loadMapFromJson(
 
         const worldMap = deserializeMapDocument(docForParse, tileRegistry);
         repairWorldMapGrids(worldMap, mapSize);
+        const { grass, border } = deserializeLayerMaps(docForParse, mapSize, tileRegistry);
 
         return {
             worldMap,
+            grassOverlay: grass,
+            borderOverlay: border,
             spawn: sanitizeSpawnPoint(
                 doc.spawn,
                 fallbackSpawn ?? { x: 50, y: 50, z: 0 },
@@ -286,6 +332,8 @@ export function loadMapFromJson(
     const legacySize = MAP_SIZE;
     return {
         worldMap: ensureAllFloors(cloneWorldMap(legacy), legacySize),
+        grassOverlay: {},
+        borderOverlay: {},
         spawn: fallbackSpawn ?? { x: 50, y: 50, z: 0 },
         name: 'importado',
         size: legacySize,

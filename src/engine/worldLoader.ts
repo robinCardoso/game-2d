@@ -7,9 +7,12 @@ import type { MapEntry } from './mapRegistry';
 import { loadMapFromJson } from './worldMap';
 import type { PortalData } from './types';
 import type { WorldMap, SpawnPoint, TileMetadata, HouseData, CreatureSpawn } from './types';
+import type { LayerMap } from './mapPaintLayers';
 
 export interface LoadedMapResult {
     worldMap: WorldMap;
+    grassOverlay?: LayerMap;
+    borderOverlay?: LayerMap;
     spawn: SpawnPoint;
     name: string;
     mapId?: string;

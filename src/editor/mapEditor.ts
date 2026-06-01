@@ -158,6 +158,7 @@ export function initMapEditor(options: {
         for (const tile of Object.values(registry)) {
             if (tile.id === -1) continue;
             if (tile.assetType === 'character') continue;
+            if (tile.assetType === 'border') continue;
             if (tile.isVariantBrush) continue;
 
             const group = tile.variantGroup?.trim();

@@ -29,7 +29,7 @@ Painel **Criar Sprites** (`data-panel="mapSprites"` ou equivalente no `studio.ht
 | Elemento | ID | Função |
 |----------|-----|--------|
 | Lista de sprites | `#mapSpriteServerSelect` | Só PNGs em `tiles/maps/**` (API) |
-| Excluir | `#deleteMapSpriteBtn` | Verifica uso → remove PNG + metadados |
+| Excluir | `#deleteMapSpriteBtn` | Sprite ou conjunto auto-borda selecionado — verifica uso nos mapas antes de remover |
 | Calibrador | aberto via painel | Multi-select, export strip, grade inferida |
 
 Paleta **Tileset** (`#tileSelector`) lista **todos** os PNGs em `tiles/**` — escopo diferente do seletor acima.
@@ -47,7 +47,7 @@ Tipo de asset em **Criar Sprites** para máscaras genéricas de borda (overlay s
 | Nome exibido | `#mapSpriteBorderSetLabelInput` | Ex.: `Bordas de grama` |
 | Terreno pintado (fill) | `#mapSpriteFillTerrainInput` | Liga ao pincel 🎲 (ex.: `grass`) |
 | Pasta destino | `#mapSpriteBorderCategoryInput` | Ex.: `terrain/borders/grass_edges` |
-| Salvar | `#saveMapSpriteBorderSetBtn` | Stub UI — API em implementação |
+| Salvar | `#saveMapSpriteBorderSetBtn` | `POST /api/save-border-set` |
 
 Calibrador em modo `borderSet`: badge **grama → chão**, presets 3×3/4×4, `#calBorderCellList` (máscaras 0–15), `#calBorderConfirmBtn`.
 

@@ -18,7 +18,21 @@ import { respawnEntitiesFromSpawns } from './character/respawnEntities';
 import { GameEntity } from './character/entity';
 import { initCharacterEditor, setSpriteEditorProfile, getSpriteEditorFlyoutTitle, type SpriteProfileId } from './editor/characterEditor';
 import { initMapSpriteEditor, setMapSpriteAfterSaveHandler } from './editor/mapSpriteEditor';
-import { initAutoBorderUi, onMapEditorTileSelectionChanged } from './editor/autoBorderUi';
+import { initAutoBorderUi, onMapEditorTileSelectionChanged, getActiveBorderSet } from './editor/autoBorderUi';
+import {
+    isGrassPaintSelection,
+    recalculateAutoBorderFloor,
+    recalculateAutoBorderRegion,
+    shouldUseGrassOverlayOnBase,
+    type AutoBorderContext,
+} from './engine/autoBorderEngine';
+import {
+    clearLayerCell,
+    createEmptyLayerMap,
+    getLayerCell,
+    setLayerCell,
+    type LayerMap,
+} from './engine/mapPaintLayers';
 import { NpcAI } from './character/npcAI';
 import {
     ENGINE_CONFIG,
@@ -99,6 +113,8 @@ export let TILE_TYPES: import('./engine/types').TileRegistry = {
 };
 
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
+let grassOverlayMap: LayerMap = createEmptyLayerMap(activeMapSize);
+let borderOverlayMap: LayerMap = createEmptyLayerMap(activeMapSize);
 let worldMetadata: Record<string, import('./engine/types').TileMetadata> = {};
 let worldHouses: Record<number, import('./engine/types').HouseData> = {};
 let mapSpawn = { x: 50, y: 50, z: 0 };
@@ -119,6 +135,7 @@ function createCollisionContext(): CollisionQueryContext {
         maxFloorZ: ENGINE_CONFIG.MAX_FLOOR_Z,
         collisionEnabled: !noclip,
         hasBoatEquipped: !!(boatToggle && boatToggle.checked),
+        grassOverlay: grassOverlayMap,
     };
 }
 
@@ -269,23 +286,37 @@ function updateHistoryButtons() {
     redos.forEach((btn) => { if (btn) btn.disabled = !canRedo; });
 }
 
+function getMapPaintSnapshot() {
+    return { base: worldMap, grass: grassOverlayMap, border: borderOverlayMap };
+}
+
+function applyMapPaintSnapshot(snapshot: {
+    base: WorldMap;
+    grass: LayerMap;
+    border: LayerMap;
+}): void {
+    worldMap = snapshot.base;
+    grassOverlayMap = snapshot.grass;
+    borderOverlayMap = snapshot.border;
+}
+
 function saveState() {
-    history.saveState(worldMap);
+    history.saveState(worldMap, grassOverlayMap, borderOverlayMap);
     updateHistoryButtons();
 }
 
 function triggerUndo() {
-    const prevState = history.undo(worldMap);
+    const prevState = history.undo(getMapPaintSnapshot());
     if (prevState) {
-        worldMap = prevState;
+        applyMapPaintSnapshot(prevState);
         updateHistoryButtons();
     }
 }
 
 function triggerRedo() {
-    const nextState = history.redo(worldMap);
+    const nextState = history.redo(getMapPaintSnapshot());
     if (nextState) {
-        worldMap = nextState;
+        applyMapPaintSnapshot(nextState);
         updateHistoryButtons();
     }
 }
@@ -619,7 +650,7 @@ setupMovementDevControls();
 updateRoleUI();
 initCharacterEditor({ onCatalogChanged: refreshCreatureCatalog });
 initMapSpriteEditor();
-initAutoBorderUi();
+initAutoBorderUi({ onRecalcFloor: () => recalcAutoBorderForEditingFloor() });
 
 // --- SISTEMA PREMIUM DE TELETRANSPORTE (IR PARA POSIÇÃO) ---
 const teleportModal = document.getElementById('teleportModal') as HTMLDivElement;
@@ -889,17 +920,112 @@ function updatePaintBrushPreviewFromEvent(e: MouseEvent): void {
     paintBrushPreview = clientToMapTile(e);
 }
 
+function buildAutoBorderContext(borderSetId: string, fillTerrain: string): AutoBorderContext {
+    return {
+        worldMap,
+        grassOverlay: grassOverlayMap,
+        borderOverlay: borderOverlayMap,
+        registry: TILE_TYPES,
+        mapSize: activeMapSize,
+        borderSetId,
+        fillTerrain,
+    };
+}
+
+function maybeRecalcAutoBorderAfterPaint(
+    z: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number
+): void {
+    const set = getActiveBorderSet();
+    if (!set) return;
+    recalculateAutoBorderRegion(
+        buildAutoBorderContext(set.id, set.fillTerrain),
+        z,
+        minX,
+        minY,
+        maxX,
+        maxY
+    );
+}
+
+function recalcAutoBorderForEditingFloor(): void {
+    const set = getActiveBorderSet();
+    if (!set) {
+        toast.info('Ative Auto-borda e selecione um conjunto na aba Pin.');
+        return;
+    }
+    saveState();
+    recalculateAutoBorderFloor(buildAutoBorderContext(set.id, set.fillTerrain), editingFloor);
+    toast.success(`Bordas recalculadas no andar ${editingFloor}.`);
+}
+
 function placeTileAt(z: number, x: number, y: number, selectedId: number): void {
     const paintId = resolvePaintSelectionId(selectedId);
+    const resolvedId = resolvePaintTileId(paintId, TILE_TYPES);
+    const set = getActiveBorderSet();
+    const isGrassBrush = isGrassPaintSelection(paintId, TILE_TYPES, set?.fillTerrain ?? 'grass');
+    const useGrassOverlay = isGrassBrush && set !== undefined;
+
+    let minX = x;
+    let minY = y;
+    let maxX = x;
+    let maxY = y;
+
     for (const { x: px, y: py } of iterBrushCells(x, y, paintBrushSize, activeMapSize)) {
-        worldMap[z][py][px] = resolvePaintTileId(paintId, TILE_TYPES);
+        minX = Math.min(minX, px);
+        minY = Math.min(minY, py);
+        maxX = Math.max(maxX, px);
+        maxY = Math.max(maxY, py);
+
+        if (useGrassOverlay) {
+            const baseId = worldMap[z][py][px];
+            if (shouldUseGrassOverlayOnBase(baseId, TILE_TYPES, set!.fillTerrain)) {
+                setLayerCell(grassOverlayMap, z, px, py, resolvedId, activeMapSize);
+            } else {
+                worldMap[z][py][px] = resolvedId;
+                clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
+            }
+        } else {
+            worldMap[z][py][px] = resolvedId;
+            clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
+            clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+        }
+    }
+
+    if (useGrassOverlay) {
+        maybeRecalcAutoBorderAfterPaint(z, minX, minY, maxX, maxY);
     }
 }
 
 function eraseTileAt(z: number, x: number, y: number): void {
     const emptyId = ENGINE_CONFIG.EMPTY_TILE_ID;
+    let minX = x;
+    let minY = y;
+    let maxX = x;
+    let maxY = y;
+    let touchedGrass = false;
+
     for (const { x: px, y: py } of iterBrushCells(x, y, paintBrushSize, activeMapSize)) {
+        minX = Math.min(minX, px);
+        minY = Math.min(minY, py);
+        maxX = Math.max(maxX, px);
+        maxY = Math.max(maxY, py);
+
+        const grassId = getLayerCell(grassOverlayMap, z, px, py);
+        if (grassId !== emptyId) {
+            clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
+            touchedGrass = true;
+            continue;
+        }
         worldMap[z][py][px] = emptyId;
+        clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+    }
+
+    if (touchedGrass && getActiveBorderSet()) {
+        maybeRecalcAutoBorderAfterPaint(z, minX, minY, maxX, maxY);
     }
 }
 
@@ -1035,6 +1161,8 @@ async function reloadTileRegistry(): Promise<void> {
               portals: worldPortals,
               tileRegistry: TILE_TYPES,
               mapId: currentMapId,
+              grassOverlay: grassOverlayMap,
+              borderOverlay: borderOverlayMap,
           })
         : null;
 
@@ -1045,6 +1173,8 @@ async function reloadTileRegistry(): Promise<void> {
     if (mapSnapshot) {
         const remapped = loadMapFromJson(mapSnapshot, mapSpawn, TILE_TYPES);
         worldMap = ensureAllFloors(remapped.worldMap, activeMapSize);
+        grassOverlayMap = remapped.grassOverlay ?? createEmptyLayerMap(activeMapSize);
+        borderOverlayMap = remapped.borderOverlay ?? createEmptyLayerMap(activeMapSize);
     }
 
     for (const mismatch of takeVariantStripMismatches()) {
@@ -1591,6 +1721,8 @@ function buildCurrentMapDocument() {
         spawns: worldSpawns,
         portals: worldPortals,
         tileRegistry: TILE_TYPES,
+        grassOverlay: grassOverlayMap,
+        borderOverlay: borderOverlayMap,
     });
 }
 
@@ -1702,6 +1834,8 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>) {
 
     const mapSize = loaded.size ?? activeMapSize;
     worldMap = ensureAllFloors(loaded.worldMap, mapSize);
+    grassOverlayMap = loaded.grassOverlay ?? createEmptyLayerMap(mapSize);
+    borderOverlayMap = loaded.borderOverlay ?? createEmptyLayerMap(mapSize);
     setActiveMapSize(mapSize);
     worldMetadata = loaded.metadata || {};
     worldHouses = loaded.houses || {};
@@ -2050,11 +2184,10 @@ function draw() {
 
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                const tid = worldMap[z][y][x];
-                if (tid !== -1) {
-                    if (isVariantBrush(tid)) continue;
+                const drawTileLayer = (tid: number) => {
+                    if (tid === -1 || isVariantBrush(tid)) return;
                     const tile = TILE_TYPES[tid];
-                    if (tile && tile.image && tile.image.complete) {
+                    if (tile?.image?.complete) {
                         drawRegistryTile(
                             ctx,
                             tile,
@@ -2063,7 +2196,11 @@ function draw() {
                             TILE_SIZE_SCREEN
                         );
                     }
-                }
+                };
+
+                drawTileLayer(worldMap[z][y][x]);
+                drawTileLayer(getLayerCell(grassOverlayMap, z, x, y));
+                drawTileLayer(getLayerCell(borderOverlayMap, z, x, y));
                 
                 if (activeMapEditorTab === 'zones') {
                     const meta = worldMetadata[`${z}_${y}_${x}`];

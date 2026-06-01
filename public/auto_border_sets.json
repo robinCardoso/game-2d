@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "sets": {
+    "grass_edges": {
+      "label": "Bordas de grama",
+      "fillTerrain": "grass",
+      "category": "borders/grass_edges",
+      "sheetFile": "grass_edges_sheet",
+      "calibration": {
+        "frameWidth": 32,
+        "frameHeight": 32,
+        "offsetX": 0,
+        "offsetY": 0,
+        "gapX": 0,
+        "gapY": 0,
+        "gridCols": 16,
+        "gridRows": 63,
+        "borderSlotCols": 4,
+        "borderSlotRows": 4
+      },
+      "cells": [
+        {
+          "col": 0,
+          "row": 0,
+          "mask": 0,
+          "sourceCol": 2,
+          "sourceRow": 21
+        },
+        {
+          "col": 1,
+          "row": 0,
+          "mask": 1,
+          "sourceCol": 2,
+          "sourceRow": 21
+        },
+        {
+          "col": 2,
+          "row": 0,
+          "mask": 2,
+          "sourceCol": 3,
+          "sourceRow": 21
+        },
+        {
+          "col": 3,
+          "row": 0,
+          "mask": 3,
+          "sourceCol": 6,
+          "sourceRow": 21
+        },
+        {
+          "col": 0,
+          "row": 1,
+          "mask": 6,
+          "sourceCol": 0,
+          "sourceRow": 22
+        },
+        {
+          "col": 1,
+          "row": 1,
+          "mask": 8,
+          "sourceCol": 1,
+          "sourceRow": 21
+        },
+        {
+          "col": 2,
+          "row": 1,
+          "mask": 9,
+          "sourceCol": 3,
+          "sourceRow": 22
+        },
+        {
+          "col": 3,
+          "row": 1,
+          "mask": 8,
+          "sourceCol": 1,
+          "sourceRow": 21
+        },
+        {
+          "col": 0,
+          "row": 2,
+          "mask": 9,
+          "sourceCol": 3,
+          "sourceRow": 22
+        },
+        {
+          "col": 1,
+          "row": 2,
+          "mask": 0,
+          "sourceCol": 1,
+          "sourceRow": 2
+        },
+        {
+          "col": 2,
+          "row": 2,
+          "mask": 0,
+          "sourceCol": 2,
+          "sourceRow": 2
+        },
+        {
+          "col": 3,
+          "row": 2,
+          "mask": 0,
+          "sourceCol": 3,
+          "sourceRow": 2
+        },
+        {
+          "col": 0,
+          "row": 3,
+          "mask": 0,
+          "sourceCol": 0,
+          "sourceRow": 3
+        },
+        {
+          "col": 1,
+          "row": 3,
+          "mask": 0,
+          "sourceCol": 1,
+          "sourceRow": 3
+        },
+        {
+          "col": 2,
+          "row": 3,
+          "mask": 0,
+          "sourceCol": 2,
+          "sourceRow": 3
+        },
+        {
+          "col": 3,
+          "row": 3,
+          "mask": 0,
+          "sourceCol": 3,
+          "sourceRow": 3
+        }
+      ],
+      "masks": {
+        "1": "grass_edges_mask_1",
+        "2": "grass_edges_mask_2",
+        "3": "grass_edges_mask_3",
+        "6": "grass_edges_mask_6",
+        "8": "grass_edges_mask_8",
+        "9": "grass_edges_mask_9"
+      }
+    }
+  }
+}

@@ -1,4 +1,4 @@
-import { createStairHoleTile } from './tileRegistry';
+import { getBaseTerrainTileAt, getSpeedTerrainTileAt } from './terrain';
 import type { CollisionQueryContext, WalkProbeResult } from './types';
 import { collisionHitboxSize, ENGINE_CONFIG } from './config';
 
@@ -49,20 +49,11 @@ export function queryWalkable(
                 return { walkable: false, speed: 0, isStair: false };
             }
 
-            const tid = floor[ty][tx];
-            let tile = ctx.tileRegistry[tid];
-
-            if (tid === EMPTY_TILE_ID && z > ctx.minFloorZ) {
-                const floorBelow = ctx.worldMap[z - 1];
-                const tidBelow = floorBelow?.[ty]?.[tx];
-                const below = tidBelow !== undefined ? ctx.tileRegistry[tidBelow] : undefined;
-                if (below?.isStair) {
-                    tile = createStairHoleTile();
-                }
-            }
+            const tile = getBaseTerrainTileAt(ctx, tx, ty, z);
+            const speedTile = getSpeedTerrainTileAt(ctx, tx, ty, z);
 
             if (tile) {
-                speedModSum += tile.speedModifier ?? 1.0;
+                speedModSum += speedTile?.speedModifier ?? tile.speedModifier ?? 1.0;
                 count++;
 
                 if (tile.swimable) {

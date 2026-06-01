@@ -7,6 +7,7 @@
 
 import { getMapEntry } from './mapRegistry';
 import { cloneWorldMap } from './worldMap';
+import { cloneLayerMap } from './mapPaintLayers';
 import type { LoadedMapResult } from './worldLoader';
 import type { CreatureSpawn, PortalData, SpawnPoint } from './types';
 
@@ -51,6 +52,8 @@ export function cloneLoadedMapResult(
 ): LoadedMapResult {
     return {
         worldMap: cloneWorldMap(source.worldMap),
+        grassOverlay: cloneLayerMap(source.grassOverlay ?? {}),
+        borderOverlay: cloneLayerMap(source.borderOverlay ?? {}),
         spawn: { ...source.spawn },
         name: source.name,
         mapId: source.mapId,

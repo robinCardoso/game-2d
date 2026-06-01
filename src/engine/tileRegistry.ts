@@ -264,7 +264,8 @@ function shouldSkipTilePath(path: string, fileName: string): boolean {
         fileName,
         normalizeTileFileName(fileName)
     );
-    return (custom as { assetType?: string } | undefined)?.assetType === 'character';
+    return (custom as { assetType?: string; tileRole?: string } | undefined)?.assetType === 'character'
+        || (custom as { tileRole?: string } | undefined)?.tileRole === 'border_sheet';
 }
 
 function registerLoadedTile(
@@ -280,7 +281,9 @@ function registerLoadedTile(
 
     const props = getTileProperties(fileName);
     const custom = getCustomProperties(fileName, baseName);
-    const paletteCategory = resolvePaletteCategory(path, category);
+    const paletteCategory =
+        (custom?.paletteCategory as PaletteCategory | undefined) ||
+        (custom?.assetType === 'border' ? ('border' as PaletteCategory) : resolvePaletteCategory(path, category));
 
     const stripFrames = inferVariantStripFrameCount(img, custom, fileName);
     if (stripFrames > 1) {

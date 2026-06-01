@@ -1,6 +1,21 @@
-# Auto-borda — UI e fluxo ADM
+# Auto-borda — UI, persistência e motor
 
-> **Escopo deste documento:** interface do Studio (Criar Sprites, calibrador, Pin, Tile). O motor de camadas no mapa (`baseId` + overlay + border overlay) é fase futura.
+> **Escopo:** interface do Studio, persistência de conjuntos (`grass_edges`, etc.) e motor de camadas no mapa (`base` + overlay grama + overlay borda).
+
+## Analogia correta (como ler o mapa)
+
+```text
+[ pedra ][ pedra ][ pedra ]     ← borda (filete) desenhada AQUI, sobre a pedra
+[ pedra ][ GRAMA  ][ GRAMA  ]     ← fill de grama (overlay) AQUI
+[ pedra ][ GRAMA  ][ pedra ]
+```
+
+- **Grama** = overlay em cima da pedra (a pedra continua embaixo).
+- **Filete** = overlay na **célula de pedra vizinha**, não na grama.
+- A **máscara** diz de onde vem a grama vizinha (N=1, E=2, S=4, O=8).
+- O PNG da máscara tem **preto = transparente** (só o filete aparece sobre a pedra).
+
+Erro comum: confundir **número do slot** (Col 1, Col 2…) com **número da máscara** (1, 2, 4, 8). Use o preset **4 cardinais** no calibrador.
 
 ## Regra central
 
@@ -9,13 +24,17 @@ Ao pintar **grama** com auto-borda ligada, **qualquer célula de chão** (pedra,
 - Um único conjunto de máscaras serve para **todos** os pisos — arte de “filete de grama” genérico sobreposto à base.
 - **Não existe** na UI campo “vizinho = pedra / areia / água”.
 
-## Modelo de camadas (referência para o motor)
+## Modelo de camadas (motor)
 
 | Camada | Conteúdo | Apagada? |
 |--------|----------|----------|
-| **Base** | Qualquer tile de chão (`paletteCategory: ground`) | Não |
-| **Overlay fill** | Grama pintada | Borracha remove só isto |
-| **Overlay borda** | Máscara do conjunto `grass_edges` | Recalculada automaticamente |
+| **Base** (`worldMap`) | Qualquer tile de chão (`paletteCategory: ground`) | Não |
+| **Overlay fill** (`layers.grassOverlay`) | Grama pintada | Borracha remove só isto |
+| **Overlay borda** (`layers.borderOverlay`) | Máscara do conjunto ativo | Recalculada automaticamente |
+
+Persistência no JSON do mapa: campo `layers` com entradas esparsas `{ z, x, y, id }` por camada.
+
+Módulos: `src/engine/mapPaintLayers.ts`, `src/engine/autoBorderEngine.ts`, `src/engine/terrain.ts` (velocidade com overlay grama).
 
 A borda aparece na **célula de chão vizinha** (cardinal N/E/S/O), não na célula de grama.
 
@@ -44,7 +63,7 @@ Conjunto MVP: **`grass_edges`** — label **“Bordas de grama”**.
 
 **Não criar:** ~~`#mapSpriteNeighborTerrainInput`~~
 
-Lista `#mapSpriteServerSelect`: optgroups **Sprites** | **Conjuntos auto-borda** (quando API existir).
+Lista `#mapSpriteServerSelect`: optgroups **Terreno** / **Itens** (sprites editáveis) + **Conjuntos auto-borda** (`GET /api/list-auto-border-sets`). Máscaras e sheet internos do conjunto **não** aparecem na lista de sprites — só o conjunto agregado.
 
 ### Calibrador — modo `borderSet`
 
@@ -66,7 +85,7 @@ Módulo: `src/editor/borderSetCalibratorUi.ts`.
 | `#autoBorderEnabledToggle` | Liga/desliga |
 | `#autoBorderSetSelect` | Conjunto ativo |
 | `#autoBorderPaintHint` | Hint “qualquer chão vizinho” |
-| `#autoBorderRecalcFloorBtn` | Recalcular andar (disabled) |
+| `#autoBorderRecalcFloorBtn` | Recalcular andar |
 
 ### Aba Tile
 
@@ -74,19 +93,19 @@ Módulo: `src/editor/borderSetCalibratorUi.ts`.
 |----|--------|
 | `#tileAutoBorderStatusChip` | Ex.: `Auto-borda: Bordas de grama` |
 
-Módulo: `src/editor/autoBorderUi.ts` — mock `grass_edges`, smart default ao selecionar pincel `grass`.
+Módulo: `src/editor/autoBorderUi.ts` — carrega conjuntos via `GET /api/list-auto-border-sets`, smart default ao selecionar pincel `grass`.
 
 ## Fluxo ADM
 
 1. **Criar Sprites** → tipo **Conjunto auto-borda** → preencher `grass_edges`, fill `grass`.
 2. Carregar PNG → **Calibrar grade** → atribuir máscaras 0–15 → **Confirmar conjunto**.
-3. **Salvar conjunto** (UI stub; persistência via API futura).
+3. **Salvar conjunto** → grava sheet + PNGs por máscara + `public/auto_border_sets.json` + `tile_properties.json`.
 4. No mapa: pintar **qualquer chão** como base.
 5. **Pin** → Auto-borda ON (ou ligar automaticamente ao escolher Grama 🎲).
 6. **Tile** → **Grama aleatório** → pintar.
-7. Motor (futuro): overlay grama; em todo chão vizinho elegível, overlay borda — sem config extra.
+7. Motor: overlay grama na célula pintada; em todo chão vizinho elegível, overlay borda — sem config extra. Botão **Recalcular andar** refaz o andar atual.
 
-## Detecção de vizinho (motor — referência)
+## Detecção de vizinho (motor)
 
 ```text
 Para cada célula (x,y) com overlay grama:
@@ -100,11 +119,9 @@ Sem comparar `variantGroup` stone vs sand — só “é chão” vs “tem grama
 
 ## Fora de escopo (UI atual)
 
-- Campo “terreno vizinho” na UI ou JSON editável pelo ADM
-- Conjuntos separados `grass_stone`, `grass_sand`, … (backlog)
 - Aba Borda dedicada no mapa
 - Tiles de borda na paleta Tile
-- Camadas no `worldMap` (1 id/célula hoje)
+- Conjuntos separados por tipo de chão (`grass_stone`, `grass_sand`, …) — backlog
 
 ## Ver também
 

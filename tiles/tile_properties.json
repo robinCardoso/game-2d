@@ -25,5 +25,81 @@
     "gridCols": 4,
     "gridRows": 1,
     "sheetLayout": "horizontal"
+  },
+  "grass_edges_sheet": {
+    "nameOverride": "Bordas de grama (spritesheet)",
+    "assetType": "border",
+    "tileRole": "border_sheet",
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_1": {
+    "nameOverride": "Bordas de grama · máscara 1",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 1,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_2": {
+    "nameOverride": "Bordas de grama · máscara 2",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 2,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_3": {
+    "nameOverride": "Bordas de grama · máscara 3",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 3,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_6": {
+    "nameOverride": "Bordas de grama · máscara 6",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 6,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_8": {
+    "nameOverride": "Bordas de grama · máscara 8",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 8,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_9": {
+    "nameOverride": "Bordas de grama · máscara 9",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 9,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
   }
 }

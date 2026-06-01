@@ -22,6 +22,12 @@ export interface TileProperties {
     /** PNG strip horizontal: N frames de TILE_SIZE lado a lado → registry expande em N tiles */
     variantStripFrames?: number;
     assetType?: string;
+    /** Máscara auto-borda 1–15 (bits N/E/S/O). */
+    borderMask?: number;
+    /** Conjunto auto-borda (ex. grass_edges). */
+    borderSetId?: string;
+    tileRole?: string;
+    paletteCategory?: string;
 }
 
 export const TILE_CONFIG: Record<string, TileProperties> = {

@@ -13,6 +13,23 @@ import {
     inferMapSpriteCalibration,
     type MapSpriteCalibration,
 } from './mapSpriteCalibration';
+import {
+    buildBorderMaskExports,
+    calibrationFromCalibratorResult,
+    getMissingCardinalBorderMasks,
+    inferBorderSlotGrid,
+    type BorderSetCalibrationPayload,
+} from './borderSetExport';
+import {
+    borderSetOptionValue,
+    deleteBorderSet,
+    fetchBorderSetUsage,
+    fetchBorderSets,
+    parseBorderSetOptionValue,
+    saveBorderSet,
+    type BorderSetManifestEntry,
+} from './borderSetApi';
+import { reloadBorderSetsFromServer } from './autoBorderUi';
 
 let afterSaveSpriteHandler: (() => void | Promise<void>) | undefined;
 
@@ -37,7 +54,23 @@ interface MapSpriteListEntry {
         gridCols?: number;
         gridRows?: number;
         sheetLayout?: string;
+        assetType?: string;
+        tileRole?: string;
+        borderSetId?: string;
     };
+}
+
+/** PNGs internos do motor auto-borda — não são sprites editáveis no Criar Sprites. */
+function isBorderSetInternalAsset(sprite: MapSpriteListEntry): boolean {
+    const props = sprite.properties ?? {};
+    if (props.assetType === 'border') return true;
+    if (props.tileRole === 'border_overlay' || props.tileRole === 'border_sheet') return true;
+    if (props.borderSetId) return true;
+
+    const filename = sprite.filename ?? '';
+    if (sprite.category.includes('borders/') && filename.endsWith('_sheet')) return true;
+    if (sprite.category.includes('borders/') && /_mask_\d+$/.test(filename)) return true;
+    return false;
 }
 
 const TERRAIN_CATEGORY_HINTS = ['ground', 'nature', 'walls', 'grass', 'water', 'borders'];
@@ -146,9 +179,11 @@ export function initMapSpriteEditor() {
     const newSpriteBtn = document.getElementById('mapSpriteNewBtn');
     const deleteSpriteBtn = document.getElementById('deleteMapSpriteBtn') as HTMLButtonElement | null;
 
-    function syncDeleteSpriteButtonVisible(visible: boolean): void {
+    function syncDeleteSpriteButtonVisible(visible: boolean, mode: 'sprite' | 'border_set' = 'sprite'): void {
         if (deleteSpriteBtn) {
             deleteSpriteBtn.style.display = visible ? '' : 'none';
+            deleteSpriteBtn.innerText =
+                mode === 'border_set' ? '🗑️ Excluir conjunto' : '🗑️ Excluir';
         }
     }
 
@@ -169,8 +204,10 @@ export function initMapSpriteEditor() {
     let processedImage: HTMLImageElement | null = null;
     let isImageLoaded = false;
     let serverSpritesList: MapSpriteListEntry[] = [];
+    let serverBorderSetsList: BorderSetManifestEntry[] = [];
     let serverFoldersList: string[] = [];
     let currentCalibration: MapSpriteCalibration | null = null;
+    let pendingBorderSetCalibration: BorderSetCalibrationPayload | null = null;
     let loadedSpriteProperties: MapSpriteListEntry['properties'] | undefined;
 
     const DEFAULT_SPRITE_NAME = '';
@@ -259,6 +296,7 @@ export function initMapSpriteEditor() {
         offsetXInput.value = '0';
         offsetYInput.value = '0';
         currentCalibration = null;
+        pendingBorderSetCalibration = null;
         loadedSpriteProperties = undefined;
         syncDeleteSpriteButtonVisible(false);
 
@@ -343,16 +381,24 @@ export function initMapSpriteEditor() {
 
             refreshCategoryDatalist();
 
+            try {
+                serverBorderSetsList = await fetchBorderSets();
+            } catch (err) {
+                console.warn('[MapSpriteEditor] Conjuntos auto-borda indisponíveis:', err);
+                serverBorderSetsList = [];
+            }
+
             if (!serverSelect) return true;
 
             serverSelect.innerHTML = '<option value="">-- Selecionar Sprite Existente --</option>';
 
-            if (serverSpritesList.length === 0) {
+            if (serverSpritesList.length === 0 && serverBorderSetsList.length === 0) {
                 return true;
             }
 
             const categories: Record<string, MapSpriteListEntry[]> = {};
             serverSpritesList.forEach((sprite) => {
+                if (isBorderSetInternalAsset(sprite)) return;
                 const catName =
                     sprite.assetType === 'terrain'
                         ? `Terreno: ${sprite.category}`
@@ -382,6 +428,19 @@ export function initMapSpriteEditor() {
                     });
                     serverSelect.appendChild(group);
                 });
+
+            if (serverBorderSetsList.length > 0) {
+                const borderGroup = document.createElement('optgroup');
+                borderGroup.label = 'Conjuntos auto-borda';
+                serverBorderSetsList.forEach((set) => {
+                    const opt = document.createElement('option');
+                    opt.value = borderSetOptionValue(set.id);
+                    const maskCount = Object.keys(set.masks ?? {}).length;
+                    opt.textContent = `${set.label} (${set.id}) · ${maskCount} máscara${maskCount === 1 ? '' : 's'}`;
+                    borderGroup.appendChild(opt);
+                });
+                serverSelect.appendChild(borderGroup);
+            }
             return true;
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -402,7 +461,64 @@ export function initMapSpriteEditor() {
 
     deleteSpriteBtn?.addEventListener('click', async () => {
         if (!serverSelect?.value) {
-            toast.error('Selecione um sprite existente para excluir.');
+            toast.error('Selecione um sprite ou conjunto existente para excluir.');
+            return;
+        }
+
+        const borderSetId = parseBorderSetOptionValue(serverSelect.value);
+        if (borderSetId) {
+            const set = serverBorderSetsList.find((s) => s.id === borderSetId);
+            if (!set) {
+                toast.error('Conjunto auto-borda não encontrado na lista.');
+                return;
+            }
+            const displayName = `${set.label} (${set.id})`;
+
+            try {
+                deleteSpriteBtn.disabled = true;
+                deleteSpriteBtn.innerText = '⌛ Verificando...';
+
+                const usage = await fetchBorderSetUsage(set.id);
+
+                if (usage.totalCells > 0) {
+                    const mapLines = usage.maps
+                        .map(
+                            (m) =>
+                                `  • ${m.mapFile} — ${m.cellCount} célula${m.cellCount === 1 ? '' : 's'}`
+                        )
+                        .join('\n');
+                    await popup.alert(
+                        `Não é possível excluir "${displayName}".<br><br>Em uso em ${usage.maps.length} mapa${usage.maps.length === 1 ? '' : 's'} (${usage.totalCells} célula${usage.totalCells === 1 ? '' : 's'} de borda no total):<br><br>${mapLines.replace(/\n/g, '<br>')}<br><br>Remova as bordas no mapa ou recalcule sem este conjunto antes de excluir.`,
+                        '⚠️ Conjunto em Uso'
+                    );
+                    return;
+                }
+
+                const confirmed = await popup.confirm(
+                    `Excluir conjunto "${displayName}" permanentemente?<br><br>Remove a spritesheet, as máscaras PNG, entradas em tile_properties.json e o registro em auto_border_sets.json.`,
+                    '🗑️ Confirmar Exclusão'
+                );
+                if (!confirmed) return;
+
+                deleteSpriteBtn.innerText = '⌛ Excluindo...';
+                await deleteBorderSet(set.id);
+
+                toast.success(`Conjunto "${set.label}" excluído com sucesso!`);
+                resetToNewSprite({ silent: true });
+                if (serverSelect) serverSelect.value = '';
+                await reloadServerMapSpritesList();
+                await reloadBorderSetsFromServer();
+                if (afterSaveSpriteHandler) {
+                    await afterSaveSpriteHandler();
+                }
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                console.error('[MapSpriteEditor] Falha ao excluir conjunto:', err);
+                await popup.alert(`Falha ao excluir conjunto: ${msg}`, 'Erro ao Excluir');
+            } finally {
+                deleteSpriteBtn.disabled = false;
+                syncDeleteSpriteButtonVisible(false);
+            }
             return;
         }
 
@@ -520,13 +636,22 @@ export function initMapSpriteEditor() {
             return;
         }
 
+        const borderSetId = parseBorderSetOptionValue(val);
+        if (borderSetId) {
+            const set = serverBorderSetsList.find((s) => s.id === borderSetId);
+            if (set) {
+                void loadBorderSetForEdit(set);
+            }
+            return;
+        }
+
         const sprite = serverSpritesList.find(s => s.relativePath === val);
         if (!sprite) {
             syncDeleteSpriteButtonVisible(false);
             return;
         }
 
-        syncDeleteSpriteButtonVisible(true);
+        syncDeleteSpriteButtonVisible(true, 'sprite');
 
         nameInput.value = sprite.name;
         assetTypeSelect.value = sprite.assetType;
@@ -568,6 +693,59 @@ export function initMapSpriteEditor() {
             }
         };
     });
+
+    async function loadBorderSetForEdit(set: BorderSetManifestEntry): Promise<void> {
+        syncDeleteSpriteButtonVisible(true, 'border_set');
+        assetTypeSelect.value = 'border_set';
+        assetTypeSelect.dispatchEvent(new Event('change'));
+
+        if (borderSetIdInput) borderSetIdInput.value = set.id;
+        if (borderSetLabelInput) borderSetLabelInput.value = set.label;
+        if (fillTerrainInput) fillTerrainInput.value = set.fillTerrain;
+        if (borderCategoryInput) borderCategoryInput.value = set.category;
+
+        const cal = set.calibration;
+        const savedCells = set.cells ?? [];
+        const slotGrid = inferBorderSlotGrid(savedCells);
+        pendingBorderSetCalibration = {
+            frameWidth: cal.frameWidth ?? ENGINE_CONFIG.TILE_SIZE,
+            frameHeight: cal.frameHeight ?? ENGINE_CONFIG.TILE_SIZE,
+            offsetX: cal.offsetX ?? 0,
+            offsetY: cal.offsetY ?? 0,
+            gapX: cal.gapX ?? 0,
+            gapY: cal.gapY ?? 0,
+            gridCols: cal.gridCols ?? 1,
+            gridRows: cal.gridRows ?? 1,
+            borderSlotCols: (cal as { borderSlotCols?: number }).borderSlotCols ?? slotGrid.cols,
+            borderSlotRows: (cal as { borderSlotRows?: number }).borderSlotRows ?? slotGrid.rows,
+            borderSetCells: savedCells,
+        };
+
+        frameWidthInput.value = String(pendingBorderSetCalibration.frameWidth);
+        frameHeightInput.value = String(pendingBorderSetCalibration.frameHeight);
+        offsetXInput.value = String(pendingBorderSetCalibration.offsetX);
+        offsetYInput.value = String(pendingBorderSetCalibration.offsetY);
+        currentCalibration = {
+            ...pendingBorderSetCalibration,
+            sheetLayout: 'horizontal',
+        };
+
+        isImageLoaded = false;
+        toast.info(`Carregando conjunto «${set.label}»...`);
+
+        originalImage = new Image();
+        const sheetPath = set.sheetRelativePath.startsWith('/')
+            ? set.sheetRelativePath
+            : `/${set.sheetRelativePath}`;
+        originalImage.src = sheetPath;
+        originalImage.onload = async () => {
+            await applyChromaProcessing();
+            toast.success(`Conjunto «${set.label}» pronto para editar (${Object.keys(set.masks).length} máscaras salvas).`);
+        };
+        originalImage.onerror = () => {
+            toast.error(`Não foi possível carregar a sheet do conjunto (${set.sheetRelativePath}).`);
+        };
+    }
 
     function syncTerrainPropertiesVisibility(): void {
         const type = assetTypeSelect.value;
@@ -716,9 +894,20 @@ export function initMapSpriteEditor() {
             'down',
             async (result: any) => {
                 if (assetTypeSelect.value === 'border_set') {
-                    const cellCount = result.borderSetCells?.length ?? 0;
+                    pendingBorderSetCalibration = calibrationFromCalibratorResult(result);
+                    frameWidthInput.value = String(pendingBorderSetCalibration.frameWidth);
+                    frameHeightInput.value = String(pendingBorderSetCalibration.frameHeight);
+                    offsetXInput.value = String(pendingBorderSetCalibration.offsetX);
+                    offsetYInput.value = String(pendingBorderSetCalibration.offsetY);
+                    currentCalibration = {
+                        ...pendingBorderSetCalibration,
+                        sheetLayout: 'horizontal',
+                    };
+                    const assignedMasks = pendingBorderSetCalibration.borderSetCells.filter(
+                        (c) => c.mask > 0
+                    ).length;
                     toast.success(
-                        `Conjunto calibrado: ${result.gridCols ?? '?'}×${result.gridRows ?? '?'} · ${cellCount} células com máscara.`
+                        `Conjunto calibrado: ${pendingBorderSetCalibration.gridCols}×${pendingBorderSetCalibration.gridRows} · ${assignedMasks} máscara(s) ativa(s). Clique em Salvar conjunto.`
                     );
                     return;
                 }
@@ -805,6 +994,9 @@ export function initMapSpriteEditor() {
                 mode: assetTypeSelect.value === 'border_set' ? 'borderSet' : 'map',
                 initialGridCols: calibration.gridCols,
                 initialGridRows: calibration.gridRows,
+                initialBorderSetCells: pendingBorderSetCalibration?.borderSetCells,
+                initialBorderSlotCols: pendingBorderSetCalibration?.borderSlotCols,
+                initialBorderSlotRows: pendingBorderSetCalibration?.borderSlotRows,
                 borderSetFillTerrain: fillTerrainInput?.value.trim() || 'grass',
                 onBatchExport: assetTypeSelect.value === 'border_set' ? undefined : (result, scope) => {
                     if (!processedImage) return;
@@ -844,12 +1036,74 @@ export function initMapSpriteEditor() {
             toast.error('Carregue uma imagem PNG e calibre as máscaras primeiro.');
             return;
         }
-        const setId = borderSetIdInput?.value.trim() || 'grass_edges';
+        if (!pendingBorderSetCalibration) {
+            toast.error('Abra o calibrador, confirme as máscaras e tente salvar de novo.');
+            return;
+        }
+
+        const setId = (borderSetIdInput?.value.trim() || 'grass_edges')
+            .toLowerCase()
+            .replace(/[^a-z0-9_]/g, '_');
         const label = borderSetLabelInput?.value.trim() || 'Bordas de grama';
-        toast.info(
-            `Salvar conjunto «${label}» (${setId}) — API em implementação. Calibração pronta na UI.`,
-            6000
-        );
+        const fillTerrain = (fillTerrainInput?.value.trim() || 'grass').toLowerCase();
+        const category = sanitizeMapSpriteCategory(borderCategoryInput?.value.trim() || `terrain/borders/${setId}`);
+
+        if (!setId) {
+            toast.error('Informe um ID válido para o conjunto (ex.: grass_edges).');
+            return;
+        }
+
+        const maskExports = buildBorderMaskExports(processedImage, pendingBorderSetCalibration, setId);
+        if (maskExports.length === 0) {
+            toast.error('Atribua pelo menos uma máscara 1–15 antes de salvar.');
+            return;
+        }
+
+        const missingCardinals = getMissingCardinalBorderMasks(pendingBorderSetCalibration.borderSetCells);
+        if (missingCardinals.length > 0) {
+            const ok = await popup.confirm(
+                `Faltam máscaras cardinais: <strong>${missingCardinals.join(', ')}</strong> (N=1, E=2, S=4, O=8).<br><br>Sem elas, bordas retas do mapa ficam incompletas. Salvar mesmo assim?`,
+                'Conjunto incompleto'
+            );
+            if (!ok) return;
+        }
+
+        try {
+            (saveBorderSetBtn as HTMLButtonElement).disabled = true;
+            const originalText = saveBorderSetBtn!.innerText;
+            saveBorderSetBtn!.innerText = '⌛ Gravando conjunto...';
+
+            await saveBorderSet({
+                setId,
+                label,
+                fillTerrain,
+                category,
+                sheetBase64: processedImage.src,
+                calibration: pendingBorderSetCalibration,
+                masks: maskExports,
+            });
+
+            toast.success(
+                `Conjunto «${label}» salvo (${maskExports.length} máscara${maskExports.length === 1 ? '' : 's'}).`
+            );
+            saveBorderSetBtn!.innerText = originalText;
+            (saveBorderSetBtn as HTMLButtonElement).disabled = false;
+
+            await reloadServerMapSpritesList();
+            await reloadBorderSetsFromServer();
+            if (serverSelect) {
+                serverSelect.value = borderSetOptionValue(setId);
+            }
+            if (afterSaveSpriteHandler) {
+                await afterSaveSpriteHandler();
+            }
+        } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.error('[MapSpriteEditor] Falha ao salvar conjunto auto-borda:', err);
+            popup.alert(`Falha ao salvar conjunto: ${msg}`, 'Erro ao Salvar');
+            saveBorderSetBtn!.innerText = '💾 Salvar conjunto';
+            (saveBorderSetBtn as HTMLButtonElement).disabled = false;
+        }
     });
 
     // Salvar no Servidor

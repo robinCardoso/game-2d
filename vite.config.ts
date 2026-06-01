@@ -74,6 +74,274 @@ function sanitizeMapSpriteFilename(raw: unknown): string | null {
   return cleaned.length > 0 ? cleaned : null;
 }
 
+function sanitizeMapSpriteSubPath(category: unknown): string {
+  if (!category) return '';
+  let sanitizedCategory = String(category)
+    .replace(/[^a-zA-Z0-9_\-\/]/g, '')
+    .replace(/\.\./g, '');
+  sanitizedCategory = sanitizedCategory
+    .replace(/^(tiles\/)?(maps|terrain|items)\//i, '')
+    .replace(/^(tiles\/)?(maps|terrain|items)$/i, '');
+  return sanitizedCategory;
+}
+
+function getAutoBorderSetsPath(): string {
+  return path.resolve(__dirname, 'public/auto_border_sets.json');
+}
+
+function readAutoBorderManifest(): { version: number; sets: Record<string, unknown> } {
+  const manifestPath = getAutoBorderSetsPath();
+  if (!fs.existsSync(manifestPath)) {
+    return { version: 1, sets: {} };
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+      version?: number;
+      sets?: Record<string, unknown>;
+    };
+    return { version: parsed.version ?? 1, sets: parsed.sets ?? {} };
+  } catch {
+    return { version: 1, sets: {} };
+  }
+}
+
+function writeAutoBorderManifest(data: { version: number; sets: Record<string, unknown> }): void {
+  fs.writeFileSync(getAutoBorderSetsPath(), JSON.stringify(data, null, 2));
+}
+
+function writePngBase64(targetPath: string, spriteBase64: string): void {
+  if (!spriteBase64.startsWith('data:image/png;base64,')) return;
+  const imageBuffer = Buffer.from(spriteBase64.replace(/^data:image\/png;base64,/, ''), 'base64');
+  fs.writeFileSync(targetPath, imageBuffer);
+}
+
+function borderSetManifestToListEntry(setId: string, entry: Record<string, unknown>) {
+  const category = String(entry.category ?? '');
+  const sheetFile = String(entry.sheetFile ?? `${setId}_sheet`);
+  const sheetRelativePath = category
+    ? `tiles/maps/${category}/${sheetFile}.png`
+    : `tiles/maps/${sheetFile}.png`;
+  return {
+    id: setId,
+    label: String(entry.label ?? setId),
+    fillTerrain: String(entry.fillTerrain ?? 'grass'),
+    category,
+    sheetFile,
+    sheetRelativePath,
+    calibration: entry.calibration ?? {},
+    cells: entry.cells ?? [],
+    masks: entry.masks ?? {},
+  };
+}
+
+function getBorderSetManifestEntry(setId: string): Record<string, unknown> | null {
+  const manifest = readAutoBorderManifest();
+  const entry = manifest.sets[setId];
+  return entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null;
+}
+
+function collectBorderSetFilenames(setId: string): string[] {
+  const entry = getBorderSetManifestEntry(setId);
+  const filenames = new Set<string>();
+  if (entry) {
+    filenames.add(String(entry.sheetFile ?? `${setId}_sheet`));
+    const masks = (entry.masks ?? {}) as Record<string, string>;
+    for (const filename of Object.values(masks)) {
+      if (filename) filenames.add(filename);
+    }
+  }
+
+  const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+  if (fs.existsSync(propertiesPath)) {
+    try {
+      const props = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8')) as Record<
+        string,
+        { borderSetId?: string }
+      >;
+      for (const [key, val] of Object.entries(props)) {
+        if (val?.borderSetId === setId) filenames.add(key);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return [...filenames];
+}
+
+function collectBorderSetUsage(setId: string): {
+  setId: string;
+  label: string;
+  maps: Array<{ mapId: string; mapFile: string; cellCount: number }>;
+  totalCells: number;
+} {
+  const entry = getBorderSetManifestEntry(setId);
+  const label = entry ? String(entry.label ?? setId) : setId;
+  const filenames = collectBorderSetFilenames(setId);
+  const filenameSet = new Set(filenames);
+  const maps: Array<{ mapId: string; mapFile: string; cellCount: number }> = [];
+  let totalCells = 0;
+
+  if (filenameSet.size === 0) {
+    return { setId, label, maps, totalCells };
+  }
+
+  const mapsDir = path.resolve(__dirname, 'public/maps');
+  if (!fs.existsSync(mapsDir)) {
+    return { setId, label, maps, totalCells };
+  }
+
+  const countRef = (
+    ref: unknown,
+    id: unknown,
+    tileRefs: Record<string, { ref?: string }> | undefined,
+    add: () => void
+  ): void => {
+    if (typeof ref === 'string') {
+      for (const filename of filenameSet) {
+        if (refMatchesMapSprite(ref, filename)) {
+          add();
+          return;
+        }
+      }
+    }
+    if (id !== undefined && tileRefs) {
+      const fromCatalog = tileRefs[String(id)]?.ref;
+      if (typeof fromCatalog === 'string') {
+        for (const filename of filenameSet) {
+          if (refMatchesMapSprite(fromCatalog, filename)) {
+            add();
+            return;
+          }
+        }
+      }
+    }
+  };
+
+  for (const mapFile of fs.readdirSync(mapsDir).filter((f) => f.endsWith('.json'))) {
+    try {
+      const content = JSON.parse(fs.readFileSync(path.join(mapsDir, mapFile), 'utf-8'));
+      let cellCount = 0;
+      const tileRefs = content.tileRefs as Record<string, { ref?: string }> | undefined;
+
+      const bump = () => {
+        cellCount++;
+      };
+
+      const scanTileEntries = (entries: unknown): void => {
+        if (!Array.isArray(entries)) return;
+        for (const entryItem of entries) {
+          if (Array.isArray(entryItem) && entryItem.length >= 3) {
+            countRef(undefined, entryItem[2], tileRefs, bump);
+          } else if (entryItem && typeof entryItem === 'object') {
+            const obj = entryItem as { ref?: string; id?: number };
+            countRef(obj.ref, obj.id, tileRefs, bump);
+          }
+        }
+      };
+
+      if (content.tiles && typeof content.tiles === 'object') {
+        for (const entries of Object.values(content.tiles as Record<string, unknown>)) {
+          scanTileEntries(entries);
+        }
+      }
+
+      if (Array.isArray(content.sparseTiles)) {
+        for (const sparseEntry of content.sparseTiles) {
+          if (!Array.isArray(sparseEntry) || sparseEntry.length < 4) continue;
+          countRef(undefined, sparseEntry[3], tileRefs, bump);
+        }
+      }
+
+      const layers = content.layers as
+        | { grass?: Record<string, unknown>; border?: Record<string, unknown> }
+        | undefined;
+      if (layers?.border && typeof layers.border === 'object') {
+        for (const entries of Object.values(layers.border)) {
+          scanTileEntries(entries);
+        }
+      }
+
+      if (cellCount > 0) {
+        maps.push({
+          mapId: typeof content.mapId === 'string' ? content.mapId : mapFile.replace(/\.json$/, ''),
+          mapFile,
+          cellCount,
+        });
+        totalCells += cellCount;
+      }
+    } catch (err) {
+      console.warn(`[Vite Backend] Erro ao escanear mapa ${mapFile} (border-set):`, err);
+    }
+  }
+
+  return { setId, label, maps, totalCells };
+}
+
+function deleteBorderSetFromDisk(setId: string): {
+  deletedFiles: string[];
+  removedProperties: string[];
+} {
+  const entry = getBorderSetManifestEntry(setId);
+  if (!entry) {
+    throw new Error(`Conjunto auto-borda "${setId}" não encontrado.`);
+  }
+
+  const category = String(entry.category ?? '');
+  const targetDir = path.resolve(__dirname, 'tiles/maps', category);
+  const sheetFile = String(entry.sheetFile ?? `${setId}_sheet`);
+  const masks = (entry.masks ?? {}) as Record<string, string>;
+  const filenames = new Set<string>([sheetFile, ...Object.values(masks)]);
+
+  const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+  let allProperties: Record<string, unknown> = {};
+  if (fs.existsSync(propertiesPath)) {
+    allProperties = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
+    for (const [key, val] of Object.entries(allProperties)) {
+      if ((val as { borderSetId?: string })?.borderSetId === setId) {
+        filenames.add(key);
+      }
+    }
+  }
+
+  const deletedFiles: string[] = [];
+  for (const filename of filenames) {
+    const pngPath = path.resolve(targetDir, `${filename}.png`);
+    if (fs.existsSync(pngPath)) {
+      fs.unlinkSync(pngPath);
+      deletedFiles.push(pngPath);
+    }
+  }
+
+  const removedProperties: string[] = [];
+  for (const filename of filenames) {
+    if (allProperties[filename]) {
+      delete allProperties[filename];
+      removedProperties.push(filename);
+    }
+  }
+  if (removedProperties.length > 0) {
+    fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
+  }
+
+  const manifest = readAutoBorderManifest();
+  delete manifest.sets[setId];
+  writeAutoBorderManifest(manifest);
+
+  if (fs.existsSync(targetDir)) {
+    try {
+      const remaining = fs.readdirSync(targetDir);
+      if (remaining.length === 0) {
+        fs.rmdirSync(targetDir);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return { deletedFiles, removedProperties };
+}
+
 function refMatchesMapSprite(ref: string, filename: string): boolean {
   return ref === filename || ref.startsWith(`${filename}#`);
 }
@@ -505,6 +773,210 @@ export default defineConfig({
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: err.message }));
             }
+          } else if (req.url === '/api/list-auto-border-sets' && req.method === 'GET') {
+            try {
+              const manifest = readAutoBorderManifest();
+              const sets = Object.entries(manifest.sets).map(([setId, entry]) =>
+                borderSetManifestToListEntry(setId, entry as Record<string, unknown>)
+              );
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, sets }));
+            } catch (err: any) {
+              console.error('[Vite Backend] Erro ao listar conjuntos auto-borda:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: err.message }));
+            }
+          } else if (reqPath === '/api/border-set-usage' && req.method === 'GET') {
+            try {
+              const setId = sanitizeMapSpriteFilename(reqSearch.get('setId'));
+              if (!setId) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Parâmetro setId inválido.' }));
+                return;
+              }
+              if (!getBorderSetManifestEntry(setId)) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: `Conjunto "${setId}" não encontrado.` }));
+                return;
+              }
+              const usage = collectBorderSetUsage(setId);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(usage));
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[Vite Backend] Erro em border-set-usage:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+            return;
+          } else if (reqPath === '/api/delete-border-set' && req.method === 'DELETE') {
+            try {
+              const setId = sanitizeMapSpriteFilename(reqSearch.get('setId'));
+              if (!setId) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Parâmetro setId inválido.' }));
+                return;
+              }
+              const entry = getBorderSetManifestEntry(setId);
+              if (!entry) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: `Conjunto "${setId}" não encontrado.` }));
+                return;
+              }
+              const force = reqSearch.get('force') === 'true';
+              const usage = collectBorderSetUsage(setId);
+              if (!force && usage.totalCells > 0) {
+                res.statusCode = 409;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error: `Conjunto em uso em ${usage.maps.length} mapa(s).`,
+                    maps: usage.maps,
+                    totalCells: usage.totalCells,
+                  })
+                );
+                return;
+              }
+
+              const result = deleteBorderSetFromDisk(setId);
+              console.log(`[Vite Backend] Conjunto auto-borda excluído: ${setId}`);
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  setId,
+                  label: usage.label,
+                  deletedFiles: result.deletedFiles.length,
+                  removedProperties: result.removedProperties,
+                })
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[Vite Backend] Erro ao excluir conjunto auto-borda:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+            return;
+          } else if (req.url === '/api/save-border-set' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+              try {
+                const parsed = JSON.parse(body || '{}');
+                const setId = sanitizeMapSpriteFilename(parsed.setId);
+                if (!setId) {
+                  res.statusCode = 400;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ error: 'ID do conjunto inválido.' }));
+                  return;
+                }
+
+                const label = String(parsed.label ?? setId).trim() || setId;
+                const fillTerrain = String(parsed.fillTerrain ?? 'grass').trim().toLowerCase() || 'grass';
+                const subPath = sanitizeMapSpriteSubPath(parsed.category);
+                const targetDir = path.resolve(__dirname, 'tiles/maps', subPath);
+                if (!fs.existsSync(targetDir)) {
+                  fs.mkdirSync(targetDir, { recursive: true });
+                }
+
+                const sheetFile = `${setId}_sheet`;
+                const sheetPath = path.resolve(targetDir, `${sheetFile}.png`);
+                if (parsed.sheetBase64) {
+                  writePngBase64(sheetPath, String(parsed.sheetBase64));
+                }
+
+                const masksInput = Array.isArray(parsed.masks) ? parsed.masks : [];
+                const masksMap: Record<string, string> = {};
+                const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');
+                let allProperties: Record<string, any> = {};
+                if (fs.existsSync(propertiesPath)) {
+                  allProperties = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
+                }
+
+                allProperties[sheetFile] = {
+                  nameOverride: `${label} (spritesheet)`,
+                  assetType: 'border',
+                  tileRole: 'border_sheet',
+                  borderSetId: setId,
+                  paletteCategory: 'border',
+                  walkable: true,
+                  speedModifier: 1.0,
+                  isStair: false,
+                };
+
+                const manifest = readAutoBorderManifest();
+                const previousEntry = manifest.sets[setId] as Record<string, unknown> | undefined;
+                const previousMasks = (previousEntry?.masks ?? {}) as Record<string, string>;
+                for (const oldFilename of Object.values(previousMasks)) {
+                  delete allProperties[oldFilename];
+                  const oldPath = path.resolve(targetDir, `${oldFilename}.png`);
+                  if (fs.existsSync(oldPath)) {
+                    fs.unlinkSync(oldPath);
+                  }
+                }
+
+                for (const maskEntry of masksInput) {
+                  const maskNum = Math.floor(Number(maskEntry?.mask));
+                  const filename = sanitizeMapSpriteFilename(maskEntry?.filename) ?? `${setId}_mask_${maskNum}`;
+                  if (!Number.isFinite(maskNum) || maskNum < 1 || maskNum > 15) continue;
+
+                  if (maskEntry?.spriteBase64) {
+                    writePngBase64(path.resolve(targetDir, `${filename}.png`), String(maskEntry.spriteBase64));
+                  }
+
+                  masksMap[String(maskNum)] = filename;
+                  allProperties[filename] = {
+                    nameOverride: `${label} · máscara ${maskNum}`,
+                    assetType: 'border',
+                    tileRole: 'border_overlay',
+                    borderMask: maskNum,
+                    borderSetId: setId,
+                    paletteCategory: 'border',
+                    walkable: true,
+                    speedModifier: 1.0,
+                    isStair: false,
+                  };
+                }
+
+                const cal = (parsed.calibration ?? {}) as Record<string, unknown>;
+                const cells = Array.isArray(cal.borderSetCells) ? cal.borderSetCells : [];
+                const { borderSetCells: _ignored, ...calibrationFields } = cal;
+
+                manifest.sets[setId] = {
+                  label,
+                  fillTerrain,
+                  category: subPath,
+                  sheetFile,
+                  calibration: calibrationFields,
+                  cells,
+                  masks: masksMap,
+                };
+                writeAutoBorderManifest(manifest);
+                fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
+
+                console.log(`[Vite Backend] Conjunto auto-borda salvo: ${setId} (${Object.keys(masksMap).length} máscaras)`);
+
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, setId, maskCount: Object.keys(masksMap).length }));
+              } catch (err: any) {
+                console.error('[Vite Backend] Erro ao salvar conjunto auto-borda:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: err.message }));
+              }
+            });
           } else if (req.url === '/api/list-tile-properties' && req.method === 'GET') {
             try {
               const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');

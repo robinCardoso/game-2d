@@ -1,76 +1,73 @@
-export type WorldMap = Record<number, number[][]>;
+import type { LayerMap } from '../engine/mapPaintLayers';
+import { cloneLayerMap } from '../engine/mapPaintLayers';
+import type { WorldMap } from '../engine/types';
+
+export type { WorldMap };
+
+export interface MapPaintSnapshot {
+    base: WorldMap;
+    grass: LayerMap;
+    border: LayerMap;
+}
 
 export function cloneWorldMap(map: WorldMap): WorldMap {
     const clone: WorldMap = {};
     for (const key in map) {
         if (Object.prototype.hasOwnProperty.call(map, key)) {
             const floor = map[key];
-            clone[key] = floor.map(row => [...row]);
+            clone[key] = floor.map((row) => [...row]);
         }
     }
     return clone;
 }
 
+export function cloneMapPaintSnapshot(snapshot: MapPaintSnapshot): MapPaintSnapshot {
+    return {
+        base: cloneWorldMap(snapshot.base),
+        grass: cloneLayerMap(snapshot.grass),
+        border: cloneLayerMap(snapshot.border),
+    };
+}
+
 export class HistoryManager {
-    private undoStack: WorldMap[] = [];
-    private redoStack: WorldMap[] = [];
+    private undoStack: MapPaintSnapshot[] = [];
+    private redoStack: MapPaintSnapshot[] = [];
     private maxStates: number = 50;
 
-    constructor() {}
-
-    /**
-     * Salva o estado atual do mapa antes de uma modificação ocorrer.
-     */
-    public saveState(state: WorldMap) {
-        this.undoStack.push(cloneWorldMap(state));
-        // Sempre que uma nova ação de desenho ocorre, limpamos a pilha de refazer
+    public saveState(base: WorldMap, grass: LayerMap = {}, border: LayerMap = {}) {
+        this.undoStack.push(
+            cloneMapPaintSnapshot({ base, grass, border })
+        );
         this.redoStack = [];
-        
+
         if (this.undoStack.length > this.maxStates) {
             this.undoStack.shift();
         }
     }
 
-    /**
-     * Retorna o estado anterior do mapa, movendo o estado atual para a pilha de refazer.
-     */
-    public undo(currentState: WorldMap): WorldMap | null {
+    public undo(current: MapPaintSnapshot): MapPaintSnapshot | null {
         if (this.undoStack.length === 0) return null;
-        
-        this.redoStack.push(cloneWorldMap(currentState));
-        const previousState = this.undoStack.pop()!;
-        return previousState;
+
+        this.redoStack.push(cloneMapPaintSnapshot(current));
+        return this.undoStack.pop() ?? null;
     }
 
-    /**
-     * Retorna o próximo estado do mapa (avançar), movendo o estado atual para a pilha de desfazer.
-     */
-    public redo(currentState: WorldMap): WorldMap | null {
+    public redo(current: MapPaintSnapshot): MapPaintSnapshot | null {
         if (this.redoStack.length === 0) return null;
-        
-        this.undoStack.push(cloneWorldMap(currentState));
-        const nextState = this.redoStack.pop()!;
-        return nextState;
+
+        this.undoStack.push(cloneMapPaintSnapshot(current));
+        return this.redoStack.pop() ?? null;
     }
 
-    /**
-     * Limpa o histórico.
-     */
     public clear() {
         this.undoStack = [];
         this.redoStack = [];
     }
 
-    /**
-     * Retorna se há estados para desfazer.
-     */
     public canUndo(): boolean {
         return this.undoStack.length > 0;
     }
 
-    /**
-     * Retorna se há estados para refazer.
-     */
     public canRedo(): boolean {
         return this.redoStack.length > 0;
     }

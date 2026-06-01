@@ -119,10 +119,15 @@ export interface MapDocument {
     spawns?: CreatureSpawn[];
     /** Portais que conectam este mapa a outros mapas do registry. */
     portals?: PortalData[];
+    /** Camadas de overlay (grama sobre chão, bordas auto). */
+    layers?: {
+        grass?: Record<string, MapTileEntry[]>;
+        border?: Record<string, MapTileEntry[]>;
+    };
     spawn: SpawnPoint;
 }
 
-export type PaletteCategory = 'ground' | 'nature' | 'walls' | 'items';
+export type PaletteCategory = 'ground' | 'nature' | 'walls' | 'items' | 'border';
 
 export interface RegistryTile extends TileProperties {
     id: number;
@@ -140,6 +145,9 @@ export interface RegistryTile extends TileProperties {
     isVariantBrush?: boolean;
     variantMemberIds?: number[];
     assetType?: string;
+    borderMask?: number;
+    borderSetId?: string;
+    tileRole?: string;
     /** Recorte dentro de `image` (variant strip) */
     sourceRect?: { x: number; y: number; w: number; h: number };
     /** Índice do frame dentro do strip (0 … N-1) */
@@ -167,4 +175,6 @@ export interface CollisionQueryContext {
     /** `false` = noclip (só quando o caller permitir, ex. GM). */
     collisionEnabled: boolean;
     hasBoatEquipped: boolean;
+    /** Overlay de grama — afeta velocidade; colisão continua na base. */
+    grassOverlay?: import('./mapPaintLayers').LayerMap;
 }

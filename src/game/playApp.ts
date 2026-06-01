@@ -31,6 +31,7 @@ import { createDefaultCharacterSpeed, type CharacterSpeedState } from '../charac
 import { SpeedBuffManager } from '../character/speedBuffs';
 import { resolveFullStepDuration } from '../character/characterMovement';
 import { loadMapFile } from '../engine/worldLoader';
+import { createEmptyLayerMap, getLayerCell, type LayerMap } from '../engine/mapPaintLayers';
 import { MAP_REGISTRY } from '../engine/mapRegistry';
 import type { PortalData } from '../engine/types';
 import {
@@ -50,6 +51,8 @@ const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
 let TILE_TYPES = buildTileRegistry();
 let activeMapSize: number = ENGINE_CONFIG.MAP_SIZE;
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
+let grassOverlayMap: LayerMap = createEmptyLayerMap();
+let borderOverlayMap: LayerMap = createEmptyLayerMap();
 let worldSpawns: import('../engine/types').CreatureSpawn[] = [];
 let worldPortals: PortalData[] = [];
 let currentMapId: string | undefined;
@@ -97,6 +100,7 @@ function createCollisionContext(): CollisionQueryContext {
         maxFloorZ: ENGINE_CONFIG.MAX_FLOOR_Z,
         collisionEnabled: true,
         hasBoatEquipped: false,
+        grassOverlay: grassOverlayMap,
     };
 }
 
@@ -163,6 +167,8 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     }
     const mapSize = loaded.size ?? activeMapSize;
     worldMap = ensureAllFloors(loaded.worldMap, mapSize);
+    grassOverlayMap = loaded.grassOverlay ?? createEmptyLayerMap(mapSize);
+    borderOverlayMap = loaded.borderOverlay ?? createEmptyLayerMap(mapSize);
     setActiveMapSize(mapSize);
     worldSpawns.length = 0;
     worldSpawns.push(...(loaded.spawns || []));
@@ -333,8 +339,8 @@ function draw(): void {
 
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                const tid = worldMap[z]?.[y]?.[x];
-                if (tid !== undefined && tid !== -1) {
+                const drawLayerTile = (tid: number | undefined) => {
+                    if (tid === undefined || tid === -1) return;
                     const tile = TILE_TYPES[tid];
                     if (tile?.image?.complete) {
                         drawRegistryTile(
@@ -345,7 +351,10 @@ function draw(): void {
                             TILE_SIZE_SCREEN
                         );
                     }
-                }
+                };
+                drawLayerTile(worldMap[z]?.[y]?.[x]);
+                drawLayerTile(getLayerCell(grassOverlayMap, z, x, y));
+                drawLayerTile(getLayerCell(borderOverlayMap, z, x, y));
                 const portal = worldPortals.find((p) => p.tileX === x && p.tileY === y && p.tileZ === z);
                 if (portal && z === player.worldZ) {
                     const pulse = (Math.sin(Date.now() / 400) + 1) / 2;

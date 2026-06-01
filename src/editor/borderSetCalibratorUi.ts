@@ -70,8 +70,22 @@ export function createBorderSetCalibratorUi(options: {
 }) {
     const assignments = new Map<string, number>();
     const sourceTiles = new Map<string, { col: number; row: number }>();
-    let activeCol = 0;
-    let activeRow = 0;
+    let activeCol = -1;
+    let activeRow = -1;
+
+    function hasActiveSlot(): boolean {
+        return activeCol >= 0 && activeRow >= 0;
+    }
+
+    function clearActiveSlot(): void {
+        activeCol = -1;
+        activeRow = -1;
+        options.listEl.querySelectorAll('.cal-border-cell-row').forEach((el) => {
+            el.classList.remove('is-active');
+        });
+        updatePickHint();
+        if (options.maskHintEl) options.maskHintEl.textContent = '';
+    }
 
     function key(col: number, row: number): string {
         return `${col},${row}`;
@@ -89,6 +103,11 @@ export function createBorderSetCalibratorUi(options: {
 
     function updatePickHint(): void {
         if (!options.pickHintEl) return;
+        if (!hasActiveSlot()) {
+            options.pickHintEl.textContent =
+                'Selecione um slot à direita, depois clique no tile na imagem à esquerda.';
+            return;
+        }
         options.pickHintEl.textContent =
             `Slot Col ${activeCol + 1} · Lin ${activeRow + 1} — clique no tile na imagem à esquerda para indicar qual célula da sheet usa esta borda.`;
     }
@@ -112,7 +131,9 @@ export function createBorderSetCalibratorUi(options: {
             }
         });
         updatePickHint();
-        updateMaskHint(assignments.get(key(activeCol, activeRow)) ?? 0);
+        if (hasActiveSlot()) {
+            updateMaskHint(assignments.get(key(activeCol, activeRow)) ?? 0);
+        }
         options.onActiveCellChange?.(col, row);
     }
 
@@ -125,8 +146,10 @@ export function createBorderSetCalibratorUi(options: {
     }
 
     function rebuildCellList(cols: number, rows: number): void {
-        activeCol = Math.min(activeCol, Math.max(0, cols - 1));
-        activeRow = Math.min(activeRow, Math.max(0, rows - 1));
+        if (hasActiveSlot()) {
+            activeCol = Math.min(activeCol, Math.max(0, cols - 1));
+            activeRow = Math.min(activeRow, Math.max(0, rows - 1));
+        }
         options.listEl.innerHTML = '';
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -142,7 +165,7 @@ export function createBorderSetCalibratorUi(options: {
                 rowEl.className = `cal-border-cell-row${mask === 0 && cols * rows > 1 ? ' is-unassigned' : ''}`;
                 rowEl.dataset.col = String(col);
                 rowEl.dataset.row = String(row);
-                if (col === activeCol && row === activeRow) {
+                if (hasActiveSlot() && col === activeCol && row === activeRow) {
                     rowEl.classList.add('is-active');
                 }
                 rowEl.innerHTML = `
@@ -171,8 +194,11 @@ export function createBorderSetCalibratorUi(options: {
                 options.listEl.appendChild(rowEl);
             }
         }
-        updatePickHint();
-        updateMaskHint(assignments.get(key(activeCol, activeRow)) ?? 0);
+        if (hasActiveSlot()) {
+            updateMaskHint(assignments.get(key(activeCol, activeRow)) ?? 0);
+        } else {
+            updatePickHint();
+        }
     }
 
     function refreshSourceLabels(): void {
@@ -198,18 +224,66 @@ export function createBorderSetCalibratorUi(options: {
                 index++;
             }
         }
-        activeCol = 0;
-        activeRow = 0;
+        activeCol = -1;
+        activeRow = -1;
+        rebuildCellList(cols, rows);
+        options.onChange?.();
+    }
+
+    /** 4 slots com máscaras 1, 2, 4, 8 (N, E, S, O) — não confundir com índice do slot. */
+    function applyCardinalPreset(): void {
+        assignments.clear();
+        sourceTiles.clear();
+        const cardinals: Array<{ col: number; row: number; mask: number }> = [
+            { col: 0, row: 0, mask: 1 },
+            { col: 1, row: 0, mask: 2 },
+            { col: 2, row: 0, mask: 4 },
+            { col: 3, row: 0, mask: 8 },
+        ];
+        for (const { col, row, mask } of cardinals) {
+            assignments.set(key(col, row), mask);
+            sourceTiles.set(key(col, row), { col, row });
+        }
+        activeCol = -1;
+        activeRow = -1;
+        rebuildCellList(4, 1);
+        options.onChange?.();
+    }
+
+    /** Restaura máscaras e remapeamentos salvos ao reabrir um conjunto. */
+    function loadAssignments(cells: BorderSetCellAssignment[], cols: number, rows: number): void {
+        assignments.clear();
+        sourceTiles.clear();
+        for (let row = 0; row < rows; row++) {
+            for (let col = 0; col < cols; col++) {
+                const k = key(col, row);
+                assignments.set(k, 0);
+                sourceTiles.set(k, { col, row });
+            }
+        }
+        for (const cell of cells) {
+            if (cell.col < 0 || cell.col >= cols || cell.row < 0 || cell.row >= rows) continue;
+            const k = key(cell.col, cell.row);
+            assignments.set(k, cell.mask);
+            sourceTiles.set(k, {
+                col: cell.sourceCol ?? cell.col,
+                row: cell.sourceRow ?? cell.row,
+            });
+        }
+        activeCol = -1;
+        activeRow = -1;
         rebuildCellList(cols, rows);
         options.onChange?.();
     }
 
     /** Clique no canvas: associa tile da sheet ao slot ativo. */
-    function handleCanvasPick(sheetCol: number, sheetRow: number): void {
+    function handleCanvasPick(sheetCol: number, sheetRow: number): boolean {
+        if (!hasActiveSlot()) return false;
         const k = key(activeCol, activeRow);
         sourceTiles.set(k, { col: sheetCol, row: sheetRow });
         refreshSourceLabels();
         options.onChange?.();
+        return true;
     }
 
     function getAssignments(cols: number, rows: number): BorderSetCellAssignment[] {
@@ -242,10 +316,15 @@ export function createBorderSetCalibratorUi(options: {
     }
 
     setBadge(options.fillTerrain ?? 'grama');
+    updatePickHint();
 
     return {
         rebuildCellList,
         applyPreset,
+        applyCardinalPreset,
+        loadAssignments,
+        hasActiveSlot,
+        clearActiveSlot,
         getAssignments,
         setFillTerrain: setBadge,
         setActiveCell,

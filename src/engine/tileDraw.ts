@@ -1,5 +1,43 @@
 import type { RegistryTile } from './types';
 
+const borderChromaCache = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+
+function applyBlackChromaKey(ctx: CanvasRenderingContext2D, size: number): void {
+    const imageData = ctx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+        if (data[i] < 24 && data[i + 1] < 24 && data[i + 2] < 24) {
+            data[i + 3] = 0;
+        }
+    }
+    ctx.putImageData(imageData, 0, 0);
+}
+
+function getBorderTileCanvas(tile: RegistryTile, size: number): HTMLCanvasElement | null {
+    const img = tile.image;
+    if (!img?.complete) return null;
+
+    const cached = borderChromaCache.get(img);
+    if (cached) return cached;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.imageSmoothingEnabled = false;
+
+    const sr = tile.sourceRect;
+    if (sr) {
+        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, 0, 0, size, size);
+    } else {
+        ctx.drawImage(img, 0, 0, size, size);
+    }
+    applyBlackChromaKey(ctx, size);
+    borderChromaCache.set(img, canvas);
+    return canvas;
+}
+
 /** Desenha tile do registro (suporta fatia de variant strip). */
 export function drawRegistryTile(
     ctx: CanvasRenderingContext2D,
@@ -8,6 +46,14 @@ export function drawRegistryTile(
     dy: number,
     size: number
 ): void {
+    if (tile.assetType === 'border' || tile.paletteCategory === 'border') {
+        const borderCanvas = getBorderTileCanvas(tile, size);
+        if (borderCanvas) {
+            ctx.drawImage(borderCanvas, Math.round(dx), Math.round(dy));
+            return;
+        }
+    }
+
     const img = tile.image;
     if (!img?.complete) return;
 
