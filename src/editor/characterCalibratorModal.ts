@@ -2,6 +2,15 @@ import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import { computeFrameDimensionsFromGrid } from './calibratorGrid';
 import { createBorderSetCalibratorUi, type BorderSetCellAssignment } from './borderSetCalibratorUi';
 import { inferBorderSlotGrid } from './borderSetExport';
+import { previewCellForSlotCoords } from './borderNeighborSlots';
+import { INNER_CORNER_4_SLOTS } from './borderNeighborSlots';
+import {
+    formatCombinedPreviewStatus,
+    pickInnerCornerPreviewIndex,
+    pickPreviewGridCell,
+    renderBorderSetPreview,
+    renderInnerCornerPreviewStrip,
+} from './borderSetPreview';
 import { toast, popup } from '../utils/popup';
 
 export interface CalibratorOpenOptions {
@@ -115,6 +124,12 @@ export function openCharacterCalibrator(
     const calBorderMaskHint = document.getElementById('calBorderMaskHint');
     const calBorderPreset3x3 = document.getElementById('calBorderPreset3x3');
     const calBorderPreset4x4 = document.getElementById('calBorderPreset4x4');
+    const calBorderPresetInnerL = document.getElementById('calBorderPresetInnerL');
+    const calBorderPreviewCanvas = document.getElementById('calBorderPreviewCanvas') as HTMLCanvasElement | null;
+    const calBorderInnerPreviewCanvas = document.getElementById(
+        'calBorderInnerPreviewCanvas'
+    ) as HTMLCanvasElement | null;
+    const calBorderPreviewStatus = document.getElementById('calBorderPreviewStatus');
 
     if (!modal || !canvas || !ctx) return;
 
@@ -144,7 +159,7 @@ export function openCharacterCalibrator(
     if (calibratorInstructionHint) {
         if (isBorderSetMode) {
             calibratorInstructionHint.innerHTML =
-                '💡 <strong>Conjunto auto-borda:</strong> Ajuste colunas/linhas e clique em <em>Aplicar divisão</em>. Selecione um slot à direita, clique no tile na imagem e escolha a máscara (0–15).';
+                '💡 <strong>Conjunto auto-borda:</strong> Use <em>9 vizinhos</em> ou <em>4 cardinais</em>. Selecione o slot (ex. «↑ Acima da grama»), clique o tile na sheet com filete no lado que encosta na grama. Confira a prévia 3×3 antes de confirmar.';
         } else {
             calibratorInstructionHint.innerHTML = isMapMode
                 ? '💡 <strong>Tile único:</strong> Informe colunas e linhas da spritesheet, clique em <em>Aplicar divisão</em>, depois clique no sprite desejado (ou use os campos à direita). Confirme para extrair só esse frame — ou use <em>Exportar todos os frames</em> para gerar a sheet inteira de uma vez.'
@@ -166,7 +181,10 @@ export function openCharacterCalibrator(
                   pickHintEl: calBorderPickHint,
                   maskHintEl: calBorderMaskHint,
                   fillTerrain: options?.borderSetFillTerrain ?? 'grass',
-                  onChange: () => renderCalibrator(),
+                  onChange: () => {
+                      renderCalibrator();
+                      updateBorderPreview();
+                  },
                   onActiveCellChange: () => renderCalibrator(),
               })
             : null;
@@ -199,6 +217,71 @@ export function openCharacterCalibrator(
         1,
         options?.initialBorderSlotRows ?? inferredSlotGrid.rows
     );
+
+    function syncBorderSlotGridFromUi(): void {
+        if (!borderSetUi) return;
+        const size = borderSetUi.getSlotGridSize();
+        borderSlotCols = size.cols;
+        borderSlotRows = size.rows;
+    }
+
+    function updateBorderPreview(): void {
+        if (!isBorderSetMode || !borderSetUi || !calBorderPreviewCanvas) return;
+        syncBorderSlotGridFromUi();
+        const cells = borderSetUi.getAssignments(borderSlotCols, borderSlotRows);
+        const active = borderSetUi.hasActiveSlot() ? borderSetUi.getActiveCell() : null;
+        const activeMask =
+            active && borderSetUi.hasActiveSlot()
+                ? borderSetUi.getMaskAt(active.col, active.row)
+                : 0;
+        const highlight =
+            active && borderSetUi.hasActiveSlot()
+                ? previewCellForSlotCoords(
+                      borderSetUi.getSlotLayoutMode(),
+                      active.col,
+                      active.row,
+                      borderSlotCols,
+                      borderSlotRows
+                  )
+                : null;
+        const outer = renderBorderSetPreview({
+            canvas: calBorderPreviewCanvas,
+            image: imageElement,
+            frameWidth: localFrameWidth,
+            frameHeight: localFrameHeight,
+            offsetX: localOffsetX,
+            offsetY: localOffsetY,
+            gapX: localGapX,
+            gapY: localGapY,
+            cells,
+            statusEl: null,
+            highlightPreviewCell: highlight,
+        });
+
+        let inner: ReturnType<typeof renderInnerCornerPreviewStrip> | null = null;
+        if (calBorderInnerPreviewCanvas) {
+            inner = renderInnerCornerPreviewStrip({
+                canvas: calBorderInnerPreviewCanvas,
+                image: imageElement,
+                frameWidth: localFrameWidth,
+                frameHeight: localFrameHeight,
+                offsetX: localOffsetX,
+                offsetY: localOffsetY,
+                gapX: localGapX,
+                gapY: localGapY,
+                cells,
+                highlightMask: activeMask > 0 ? activeMask : null,
+            });
+        }
+
+        if (calBorderPreviewStatus) {
+            const text = formatCombinedPreviewStatus(outer, inner);
+            calBorderPreviewStatus.textContent = text;
+            const hasMissing =
+                outer.missingMasks.length > 0 || (inner?.missingMasks.length ?? 0) > 0;
+            calBorderPreviewStatus.classList.toggle('is-error', hasMissing);
+        }
+    }
 
     // Ajusta o Canvas para a imagem real
     canvas.width = imageW;
@@ -266,6 +349,7 @@ export function openCharacterCalibrator(
         calFrameHeightInput.value = String(localFrameHeight);
         updateDivisionPreview(result);
         renderCalibrator();
+        updateBorderPreview();
         if (borderSetUi && !isBorderSetMode) {
             borderSetUi.rebuildCellList(localGridCols, localGridRows);
         }
@@ -689,9 +773,64 @@ export function openCharacterCalibrator(
                         2800
                     );
                 } else {
-                    toast.info('Selecione um slot à direita antes de clicar na imagem.');
+                    toast.info('Clique numa célula da prévia 3×3 ou num slot à direita, depois clique na imagem.');
                 }
             }
+        },
+        { signal }
+    );
+
+    calBorderPreviewCanvas?.addEventListener(
+        'click',
+        (e) => {
+            if (!isBorderSetMode || !borderSetUi) return;
+            const grid = pickPreviewGridCell(calBorderPreviewCanvas, e.clientX, e.clientY);
+            if (!grid) return;
+            if (grid.x === 1 && grid.y === 1) {
+                toast.info('O centro é a grama — clique numa célula de pedra ao redor.');
+                return;
+            }
+            const pick = borderSetUi.selectSlotFromPreviewGrid(grid.x, grid.y);
+            if (!pick.ok) {
+                toast.info('Esta célula não tem slot correspondente.');
+                return;
+            }
+            syncBorderSlotGridFromUi();
+            renderCalibrator();
+            updateBorderPreview();
+            const active = borderSetUi.getActiveCell();
+            const meta = borderSetUi.getMaskAt(active.col, active.row);
+            toast.info(
+                `Posição M${meta} ativa. Clique o tile na imagem à esquerda (filete encostando na grama).`,
+                3200
+            );
+        },
+        { signal }
+    );
+
+    calBorderInnerPreviewCanvas?.addEventListener(
+        'click',
+        (e) => {
+            if (!isBorderSetMode || !borderSetUi) return;
+            const col = pickInnerCornerPreviewIndex(
+                calBorderInnerPreviewCanvas,
+                e.clientX,
+                e.clientY
+            );
+            if (col === null) return;
+            const mask = INNER_CORNER_4_SLOTS[col]?.mask ?? 0;
+            if (mask <= 0) return;
+            if (!borderSetUi.ensureAndSelectInnerCorner(mask)) {
+                toast.error('Não foi possível ativar o slot desta quina interna.');
+                return;
+            }
+            syncBorderSlotGridFromUi();
+            renderCalibrator();
+            updateBorderPreview();
+            toast.info(
+                `Quina interna M${mask} ativa. Clique o tile em L na sheet à esquerda.`,
+                3200
+            );
         },
         { signal }
     );
@@ -796,9 +935,9 @@ export function openCharacterCalibrator(
     calBorderPreset3x3?.addEventListener('click', () => {
         borderSlotCols = 3;
         borderSlotRows = 3;
-        borderSetUi?.applyPreset(3, 3);
+        borderSetUi?.applyFullNeighborPreset();
         toast.info(
-            'Grade 3×3 de slots: escolha o número da máscara (1, 2, 4, 8…) em cada slot — não é o índice do slot.'
+            '9 slots = pedra ao redor da grama. «↑ Acima» usa M4 (filete embaixo do PNG). Clique cada slot e o tile na sheet.'
         );
     });
 
@@ -807,7 +946,28 @@ export function openCharacterCalibrator(
         borderSlotRows = 1;
         borderSetUi?.applyCardinalPreset();
         toast.info(
-            '4 slots cardinais (máscaras 1=N, 2=E, 4=S, 8=O). Clique cada tile da sheet na imagem.'
+            '4 cardinais: ↑ M4 · → M8 · ↓ M1 · ← M2. Clique cada slot e o tile na sheet.'
+        );
+    });
+
+    calBorderPresetInnerL?.addEventListener('click', () => {
+        const size = borderSetUi?.getSlotGridSize();
+        const hasNeighbor = (size?.rows ?? 0) >= 3 && (size?.cols ?? 0) >= 3;
+        if (hasNeighbor) {
+            borderSetUi?.appendInnerCornerSlots();
+        } else {
+            borderSetUi?.applyFullNeighborPreset();
+            borderSetUi?.appendInnerCornerSlots();
+        }
+        const after = borderSetUi?.getSlotGridSize();
+        if (after) {
+            borderSlotCols = after.cols;
+            borderSlotRows = after.rows;
+        }
+        updateBorderPreview();
+        toast.info(
+            'Slots M3, M6, M12, M9 criados na lista (role até o fim). Clique cada quina na prévia ou na lista, depois o tile na sheet.',
+            5500
         );
     });
 
@@ -975,6 +1135,7 @@ export function openCharacterCalibrator(
             toast.error('Defina a grade (Aplicar divisão) antes de confirmar.');
             return;
         }
+        syncBorderSlotGridFromUi();
         const cells = borderSetUi.getAssignments(borderSlotCols, borderSlotRows);
         onConfirm({
             frameWidth: localFrameWidth,
@@ -1000,11 +1161,39 @@ export function openCharacterCalibrator(
 
     // Inicialização do Modal
     if (isBorderSetMode) {
-        applyGridDivision(localGridCols, localGridRows, false);
-        borderSetUi?.rebuildCellList(borderSlotCols, borderSlotRows);
-        if (savedBorderCells.length > 0) {
-            borderSetUi?.loadAssignments(savedBorderCells, borderSlotCols, borderSlotRows);
+        if (initialConfig.frameWidth > 0 && initialConfig.frameHeight > 0) {
+            localFrameWidth = initialConfig.frameWidth;
+            localFrameHeight = initialConfig.frameHeight;
+            localOffsetX = initialConfig.offsetX ?? 0;
+            localOffsetY = initialConfig.offsetY ?? 0;
+            localGapX = initialConfig.gapX ?? 0;
+            localGapY = initialConfig.gapY ?? 0;
+            calFrameWidthInput.value = String(localFrameWidth);
+            calFrameHeightInput.value = String(localFrameHeight);
+            calOffsetXInput.value = String(localOffsetX);
+            calOffsetYInput.value = String(localOffsetY);
+            calGapXInput.value = String(localGapX);
+            calGapYInput.value = String(localGapY);
         }
+
+        if (savedBorderCells.length > 0) {
+            const slotGrid = inferBorderSlotGrid(savedBorderCells);
+            borderSlotCols = slotGrid.cols;
+            borderSlotRows = slotGrid.rows;
+            borderSetUi?.loadAssignments(savedBorderCells, borderSlotCols, borderSlotRows);
+            const size = borderSetUi?.getSlotGridSize();
+            if (size) {
+                borderSlotCols = size.cols;
+                borderSlotRows = size.rows;
+            }
+        } else {
+            borderSetUi?.applyFullNeighborPreset();
+            borderSlotCols = 3;
+            borderSlotRows = 3;
+            toast.info('Preset «9 vizinhos» aplicado. Clique na prévia ou na lista, depois o tile na sheet.', 4000);
+        }
+
+        applyGridDivision(localGridCols, localGridRows, false);
     } else if (isMapMode && (localGridCols > 1 || localGridRows > 1)) {
         applyGridDivision(localGridCols, localGridRows, false);
     } else if (initialConfig.frameWidth <= 0 || initialConfig.frameHeight <= 0) {
@@ -1032,4 +1221,5 @@ export function openCharacterCalibrator(
     updateZoom();
     modal.classList.add('is-open');
     renderCalibrator();
+    updateBorderPreview();
 }

@@ -16,7 +16,9 @@ import {
 import {
     buildBorderMaskExports,
     calibrationFromCalibratorResult,
+    getDuplicateBorderMasks,
     getMissingCardinalBorderMasks,
+    getMissingDiagonalBorderMasks,
     inferBorderSlotGrid,
     type BorderSetCalibrationPayload,
 } from './borderSetExport';
@@ -32,6 +34,7 @@ import {
 import { reloadBorderSetsFromServer } from './autoBorderUi';
 
 let afterSaveSpriteHandler: (() => void | Promise<void>) | undefined;
+let afterBorderSetSaveHandler: (() => void | Promise<void>) | undefined;
 
 interface MapSpriteListEntry {
     name: string;
@@ -129,6 +132,11 @@ function collectCategoriesForAssetType(
 /** Registra callback para recarregar paleta do mapa após salvar sprite (wire em main.ts). */
 export function setMapSpriteAfterSaveHandler(handler: () => void | Promise<void>): void {
     afterSaveSpriteHandler = handler;
+}
+
+/** Recalcula bordas no mapa após salvar/reexportar um conjunto auto-borda. */
+export function setBorderSetAfterSaveHandler(handler: () => void | Promise<void>): void {
+    afterBorderSetSaveHandler = handler;
 }
 
 export function initMapSpriteEditor() {
@@ -1055,8 +1063,17 @@ export function initMapSpriteEditor() {
 
         const maskExports = buildBorderMaskExports(processedImage, pendingBorderSetCalibration, setId);
         if (maskExports.length === 0) {
-            toast.error('Atribua pelo menos uma máscara 1–15 antes de salvar.');
+            toast.error('Atribua pelo menos uma máscara antes de salvar.');
             return;
+        }
+
+        const duplicateMasks = getDuplicateBorderMasks(pendingBorderSetCalibration.borderSetCells);
+        if (duplicateMasks.length > 0) {
+            const ok = await popup.confirm(
+                `Máscaras repetidas em vários slots: <strong>${duplicateMasks.join(', ')}</strong>. Só a primeira associação será exportada.<br><br>Corrija no calibrador ou salve assim?`,
+                'Máscaras duplicadas'
+            );
+            if (!ok) return;
         }
 
         const missingCardinals = getMissingCardinalBorderMasks(pendingBorderSetCalibration.borderSetCells);
@@ -1064,6 +1081,15 @@ export function initMapSpriteEditor() {
             const ok = await popup.confirm(
                 `Faltam máscaras cardinais: <strong>${missingCardinals.join(', ')}</strong> (N=1, E=2, S=4, O=8).<br><br>Sem elas, bordas retas do mapa ficam incompletas. Salvar mesmo assim?`,
                 'Conjunto incompleto'
+            );
+            if (!ok) return;
+        }
+
+        const missingDiagonals = getMissingDiagonalBorderMasks(pendingBorderSetCalibration.borderSetCells);
+        if (missingDiagonals.length > 0) {
+            const ok = await popup.confirm(
+                `Faltam máscaras diagonais: <strong>${missingDiagonals.join(', ')}</strong> (NE=16, SE=32, SO=64, NO=128).<br><br>Cantos diagonais da grama ficarão vazios. Salvar mesmo assim?`,
+                'Diagonais opcionais'
             );
             if (!ok) return;
         }
@@ -1096,6 +1122,9 @@ export function initMapSpriteEditor() {
             }
             if (afterSaveSpriteHandler) {
                 await afterSaveSpriteHandler();
+            }
+            if (afterBorderSetSaveHandler) {
+                await afterBorderSetSaveHandler();
             }
         } catch (err: unknown) {
             const msg = err instanceof Error ? err.message : String(err);

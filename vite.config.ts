@@ -929,7 +929,7 @@ export default defineConfig({
                 for (const maskEntry of masksInput) {
                   const maskNum = Math.floor(Number(maskEntry?.mask));
                   const filename = sanitizeMapSpriteFilename(maskEntry?.filename) ?? `${setId}_mask_${maskNum}`;
-                  if (!Number.isFinite(maskNum) || maskNum < 1 || maskNum > 15) continue;
+                  if (!Number.isFinite(maskNum) || maskNum < 1 || maskNum > 255) continue;
 
                   if (maskEntry?.spriteBase64) {
                     writePngBase64(path.resolve(targetDir, `${filename}.png`), String(maskEntry.spriteBase64));

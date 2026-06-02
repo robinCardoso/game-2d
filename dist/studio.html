@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>2D World Builder — GM Studio</title>
-    <script type="module" crossorigin src="/assets/studio-DvdP2sTw.js"></script>
+    <script type="module" crossorigin src="/assets/studio-DESAhwZG.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/characterSerializer-NFdx-pyM.js">
     <link rel="modulepreload" crossorigin href="/assets/authGuard-BfF5FsYQ.js">
     <link rel="modulepreload" crossorigin href="/assets/studioBoot-CVxhBUJI.js">
-    <link rel="stylesheet" crossorigin href="/assets/style-B1GbJp50.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-DlnUPkRF.css">
   </head>
   <body>
     <div id="loadingScreen" class="loading-screen" aria-live="polite" aria-busy="true">
@@ -480,6 +480,13 @@
               <!-- Criador de Sprites de Terreno e Itens -->
               <section class="flyout-section" data-panel="sprite_creator">
                 <div class="character-editor-panel">
+                  <label class="flyout-label">Tipo de Asset</label>
+                  <select id="mapSpriteAssetTypeSelect" class="select-full" style="margin-bottom: 12px; background: #111318; border-color: #3f4452;">
+                    <option value="terrain" selected>Bloco de Mapa (Terreno)</option>
+                    <option value="items">Item / Decoração</option>
+                    <option value="border_set">Conjunto auto-borda</option>
+                  </select>
+
                   <label class="flyout-label">Sprites existentes</label>
                   <select id="mapSpriteServerSelect" class="select-full" style="margin-bottom: 6px; font-size: 11px;">
                     <option value="">-- Selecionar Sprite Existente --</option>
@@ -492,13 +499,6 @@
 
                   <label class="flyout-label">Nome do Sprite</label>
                   <input type="text" id="mapSpriteNameInput" value="Nova Grama" style="width: 100%; background: #1a1d24; color: #fff; border: 1px solid #3f4452; border-radius: 4px; padding: 4px 8px; margin-bottom: 12px; font-size: 11px;" />
-
-                  <label class="flyout-label">Tipo de Asset</label>
-                  <select id="mapSpriteAssetTypeSelect" class="select-full" style="margin-bottom: 12px; background: #111318; border-color: #3f4452;">
-                    <option value="terrain" selected>Bloco de Mapa (Terreno)</option>
-                    <option value="items">Item / Decoração</option>
-                    <option value="border_set">Conjunto auto-borda</option>
-                  </select>
 
                   <div id="mapSpriteBorderSetBlock" style="display: none; margin-bottom: 12px;">
                     <label class="flyout-label">Conjunto de bordas</label>
@@ -762,15 +762,23 @@
               <div class="calibrator-submenu-title">🌿 Conjunto auto-borda</div>
               <p id="calBorderSetBadge" class="cal-border-set-badge">grama → chão</p>
               <p class="flyout-hint" style="margin: 0 0 6px; font-size: 10px; line-height: 1.45;">
-                A máscara diz <strong>de onde vem a grama</strong> em relação ao chão — não é o desenho do tile. Ex.: «Grama ↓ Sul» = filete na parte de baixo.
+                Cada slot = <strong>pedra ao redor da grama</strong>. Ex.: «↑ Acima da grama» = pedra em cima → escolha tile com filete <strong>embaixo</strong> (M4).
               </p>
               <p id="calBorderPickHint" class="cal-border-pick-hint">Selecione um slot e clique no tile na imagem.</p>
               <p id="calBorderMaskHint" class="cal-border-mask-hint"></p>
               <div class="cal-border-preset-row">
-                <button type="button" class="floor-btn" id="calBorderPreset3x3">Preset 3×3</button>
-                <button type="button" class="floor-btn" id="calBorderPreset4x4">Preset 4×4</button>
+                <button type="button" class="floor-btn" id="calBorderPreset3x3" title="8 slots = vizinhos da grama (N/E/S/O + diagonais)">9 vizinhos</button>
+                <button type="button" class="floor-btn" id="calBorderPreset4x4" title="Mínimo: bordas retas N/E/S/O">4 cardinais</button>
+                <button type="button" class="floor-btn" id="calBorderPresetInnerL" title="Quinas internas em L (máscaras 3, 6, 9, 12) — adiciona após 9 vizinhos">+ 4 quinas L</button>
               </div>
               <div id="calBorderCellList" class="cal-border-cell-list" aria-label="Máscaras por célula"></div>
+              <div class="cal-border-preview-block">
+                <p class="cal-border-preview-label">Bordas retas — clique na pedra, depois na sheet</p>
+                <canvas id="calBorderPreviewCanvas" width="96" height="96" title="Clique na célula de pedra ao redor da grama, depois escolha o tile na sheet" aria-label="Prévia 3×3 das bordas"></canvas>
+                <p class="cal-border-preview-label cal-border-preview-label--inner">Quinas internas (L) — M3 · M6 · M12 · M9</p>
+                <canvas id="calBorderInnerPreviewCanvas" width="128" height="32" title="Clique na quina L para selecionar o slot, depois o tile na sheet" aria-label="Prévia das quatro quinas internas"></canvas>
+                <p id="calBorderPreviewStatus" class="cal-border-preview-status"></p>
+              </div>
             </div>
 
             <!-- Ajuste de Âncora -->

@@ -17,13 +17,16 @@ import { createDefaultCharacterConfig } from './character/characterSerializer';
 import { respawnEntitiesFromSpawns } from './character/respawnEntities';
 import { GameEntity } from './character/entity';
 import { initCharacterEditor, setSpriteEditorProfile, getSpriteEditorFlyoutTitle, type SpriteProfileId } from './editor/characterEditor';
-import { initMapSpriteEditor, setMapSpriteAfterSaveHandler } from './editor/mapSpriteEditor';
+import {
+    initMapSpriteEditor,
+    setBorderSetAfterSaveHandler,
+    setMapSpriteAfterSaveHandler,
+} from './editor/mapSpriteEditor';
 import { initAutoBorderUi, onMapEditorTileSelectionChanged, getActiveBorderSet } from './editor/autoBorderUi';
 import {
     isGrassPaintSelection,
     recalculateAutoBorderFloor,
     recalculateAutoBorderRegion,
-    shouldUseGrassOverlayOnBase,
     type AutoBorderContext,
 } from './engine/autoBorderEngine';
 import {
@@ -962,12 +965,53 @@ function recalcAutoBorderForEditingFloor(): void {
     toast.success(`Bordas recalculadas no andar ${editingFloor}.`);
 }
 
+function isPaintDebugEnabled(): boolean {
+    if (!import.meta.env.DEV) return false;
+    const g = globalThis as typeof globalThis & {
+        __paintDebug?: boolean;
+        localStorage?: Storage;
+    };
+    if (g.__paintDebug === true) return true;
+    try {
+        return g.localStorage?.getItem('debug.paint') === '1';
+    } catch {
+        return false;
+    }
+}
+
+function isMapSaveDebugEnabled(): boolean {
+    if (!import.meta.env.DEV) return false;
+    const g = globalThis as typeof globalThis & {
+        __mapSaveDebug?: boolean;
+        localStorage?: Storage;
+    };
+    if (g.__mapSaveDebug === true) return true;
+    try {
+        return g.localStorage?.getItem('debug.map.save') === '1';
+    } catch {
+        return false;
+    }
+}
+
 function placeTileAt(z: number, x: number, y: number, selectedId: number): void {
     const paintId = resolvePaintSelectionId(selectedId);
     const resolvedId = resolvePaintTileId(paintId, TILE_TYPES);
     const set = getActiveBorderSet();
     const isGrassBrush = isGrassPaintSelection(paintId, TILE_TYPES, set?.fillTerrain ?? 'grass');
     const useGrassOverlay = isGrassBrush && set !== undefined;
+    const debugPaint = isPaintDebugEnabled();
+    const debugCells: Array<{
+        x: number;
+        y: number;
+        baseBefore: number;
+        grassBefore: number;
+        borderBefore: number;
+        baseAfterPaint: number;
+        grassAfterPaint: number;
+        borderAfterPaint: number;
+        grassAfterRecalc: number;
+        borderAfterRecalc: number;
+    }> = [];
 
     let minX = x;
     let minY = y;
@@ -979,24 +1023,51 @@ function placeTileAt(z: number, x: number, y: number, selectedId: number): void 
         minY = Math.min(minY, py);
         maxX = Math.max(maxX, px);
         maxY = Math.max(maxY, py);
+        const baseBefore = worldMap[z][py][px];
+        const grassBefore = getLayerCell(grassOverlayMap, z, px, py);
+        const borderBefore = getLayerCell(borderOverlayMap, z, px, py);
 
         if (useGrassOverlay) {
-            const baseId = worldMap[z][py][px];
-            if (shouldUseGrassOverlayOnBase(baseId, TILE_TYPES, set!.fillTerrain)) {
-                setLayerCell(grassOverlayMap, z, px, py, resolvedId, activeMapSize);
-            } else {
-                worldMap[z][py][px] = resolvedId;
-                clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
-            }
+            // Modo auto-borda: pintura de grama é sempre aditiva no overlay,
+            // mesmo sem base (comportamento estilo Tibia).
+            setLayerCell(grassOverlayMap, z, px, py, resolvedId, activeMapSize);
+            clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
         } else {
             worldMap[z][py][px] = resolvedId;
             clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
             clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
         }
+
+        if (debugPaint) {
+            debugCells.push({
+                x: px,
+                y: py,
+                baseBefore,
+                grassBefore,
+                borderBefore,
+                baseAfterPaint: worldMap[z][py][px],
+                grassAfterPaint: getLayerCell(grassOverlayMap, z, px, py),
+                borderAfterPaint: getLayerCell(borderOverlayMap, z, px, py),
+                grassAfterRecalc: ENGINE_CONFIG.EMPTY_TILE_ID,
+                borderAfterRecalc: ENGINE_CONFIG.EMPTY_TILE_ID,
+            });
+        }
     }
 
     if (useGrassOverlay) {
         maybeRecalcAutoBorderAfterPaint(z, minX, minY, maxX, maxY);
+    }
+
+    if (debugPaint && debugCells.length > 0) {
+        for (const row of debugCells) {
+            row.grassAfterRecalc = getLayerCell(grassOverlayMap, z, row.x, row.y);
+            row.borderAfterRecalc = getLayerCell(borderOverlayMap, z, row.x, row.y);
+        }
+        console.groupCollapsed(
+            `[PaintDebug] z=${z} click=(${x},${y}) brush=${paintBrushSize} selected=${selectedId} paint=${paintId} resolved=${resolvedId} autoBorder=${useGrassOverlay}`
+        );
+        console.table(debugCells);
+        console.groupEnd();
     }
 }
 
@@ -1215,6 +1286,11 @@ async function loadCustomTileProperties() {
 const tileRegistryReady: Promise<void> = loadCustomTileProperties();
 
 setMapSpriteAfterSaveHandler(() => reloadTileRegistry());
+
+setBorderSetAfterSaveHandler(async () => {
+    if (!getActiveBorderSet()) return;
+    recalcAutoBorderForEditingFloor();
+});
 
 // --- SISTEMA DE ENTRADA E DESENHO ---
 let startX = 0;
@@ -1770,6 +1846,24 @@ async function saveCurrentMapToPublicDev(filename?: string) {
         filename ??
         entry.file.replace(/^.*\//, '') ??
         `${entry.id}.json`;
+
+    if (isMapSaveDebugEnabled()) {
+        const baseCount = collectSparseTiles(worldMap, activeMapSize).length;
+        const grassCount = collectSparseTiles(
+            grassOverlayMap,
+            activeMapSize,
+            ENGINE_CONFIG.EMPTY_TILE_ID
+        ).length;
+        const borderCount = collectSparseTiles(
+            borderOverlayMap,
+            activeMapSize,
+            ENGINE_CONFIG.EMPTY_TILE_ID
+        ).length;
+        console.log(
+            `[MapSaveDebug] mapId=${entry.id} floor=${editingFloor} base=${baseCount} grass=${grassCount} border=${borderCount}`
+        );
+    }
+
     const doc = buildCurrentMapDocument();
     const result = await saveMapDocumentToDevPublic(file, doc);
     if (result.ok) {
@@ -1965,7 +2059,11 @@ async function transitionToMap(targetMapId: string, overrideSpawn?: { x: number;
         }
     } catch (err) {
         console.error('[Multi-Map] Falha ao carregar mapa:', err);
-        popup.alert(`Falha ao carregar mapa "${entry.name}". Verifique se o arquivo existe em public/maps/.`, 'Erro');
+        const detail = err instanceof Error ? err.message : String(err);
+        popup.alert(
+            `Falha ao carregar mapa "${entry.name}".\n\n${detail}`,
+            'Erro'
+        );
     } finally {
         isTransitioningMap = false;
         hideLoadingOverlay();
@@ -2199,8 +2297,12 @@ function draw() {
                 };
 
                 drawTileLayer(worldMap[z][y][x]);
-                drawTileLayer(getLayerCell(grassOverlayMap, z, x, y));
-                drawTileLayer(getLayerCell(borderOverlayMap, z, x, y));
+                const grassTid = getLayerCell(grassOverlayMap, z, x, y);
+                drawTileLayer(grassTid);
+                // Segurança visual: nunca desenhar borda por cima de célula com grama.
+                if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
+                    drawTileLayer(getLayerCell(borderOverlayMap, z, x, y));
+                }
                 
                 if (activeMapEditorTab === 'zones') {
                     const meta = worldMetadata[`${z}_${y}_${x}`];

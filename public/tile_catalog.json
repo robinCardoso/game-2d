@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-01T01:21:10.559Z",
+  "generatedAt": "2026-06-02T10:52:09.930Z",
   "tileSize": 32,
   "format": "game-2d/map-sparse-v1",
   "coordSystem": {
@@ -20,12 +20,6 @@
       "brushId": 9000,
       "label": "Grama aleatório",
       "memberIds": [
-        14,
-        15,
-        16,
-        17,
-        18,
-        19,
         20,
         21,
         22,
@@ -39,17 +33,23 @@
         30,
         31,
         32,
-        33
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39
       ]
     },
     "stone": {
       "brushId": 9001,
       "label": "Pedra aleatório",
       "memberIds": [
-        34,
-        35,
-        36,
-        37
+        40,
+        41,
+        42,
+        43
       ]
     }
   },
@@ -63,48 +63,90 @@
     },
     {
       "id": 8,
+      "name": "Bordas de grama · máscara 12",
+      "ref": "grass_edges_mask_12",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 9,
+      "name": "Bordas de grama · máscara 128",
+      "ref": "grass_edges_mask_128",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 10,
+      "name": "Bordas de grama · máscara 16",
+      "ref": "grass_edges_mask_16",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 11,
       "name": "Bordas de grama · máscara 2",
       "ref": "grass_edges_mask_2",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 9,
+      "id": 12,
       "name": "Bordas de grama · máscara 3",
       "ref": "grass_edges_mask_3",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 10,
+      "id": 13,
+      "name": "Bordas de grama · máscara 32",
+      "ref": "grass_edges_mask_32",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 14,
+      "name": "Bordas de grama · máscara 4",
+      "ref": "grass_edges_mask_4",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 15,
       "name": "Bordas de grama · máscara 6",
       "ref": "grass_edges_mask_6",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 11,
+      "id": 16,
+      "name": "Bordas de grama · máscara 64",
+      "ref": "grass_edges_mask_64",
+      "category": "border",
+      "walkable": true
+    },
+    {
+      "id": 17,
       "name": "Bordas de grama · máscara 8",
       "ref": "grass_edges_mask_8",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 12,
+      "id": 18,
       "name": "Bordas de grama · máscara 9",
       "ref": "grass_edges_mask_9",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 13,
+      "id": 19,
       "name": "Bordas de grama (spritesheet)",
       "ref": "grass_edges_sheet",
       "category": "border",
       "walkable": true
     },
     {
-      "id": 14,
+      "id": 20,
       "name": "grama_20_var_variants · 1",
       "ref": "grama_20_var_variants#0",
       "category": "ground",
@@ -113,7 +155,7 @@
       "variantIndex": 0
     },
     {
-      "id": 15,
+      "id": 21,
       "name": "grama_20_var_variants · 2",
       "ref": "grama_20_var_variants#1",
       "category": "ground",
@@ -122,7 +164,7 @@
       "variantIndex": 1
     },
     {
-      "id": 16,
+      "id": 22,
       "name": "grama_20_var_variants · 3",
       "ref": "grama_20_var_variants#2",
       "category": "ground",
@@ -131,7 +173,7 @@
       "variantIndex": 2
     },
     {
-      "id": 17,
+      "id": 23,
       "name": "grama_20_var_variants · 4",
       "ref": "grama_20_var_variants#3",
       "category": "ground",
@@ -140,7 +182,7 @@
       "variantIndex": 3
     },
     {
-      "id": 18,
+      "id": 24,
       "name": "grama_20_var_variants · 5",
       "ref": "grama_20_var_variants#4",
       "category": "ground",
@@ -149,7 +191,7 @@
       "variantIndex": 4
     },
     {
-      "id": 19,
+      "id": 25,
       "name": "grama_20_var_variants · 6",
       "ref": "grama_20_var_variants#5",
       "category": "ground",
@@ -158,7 +200,7 @@
       "variantIndex": 5
     },
     {
-      "id": 20,
+      "id": 26,
       "name": "grama_20_var_variants · 7",
       "ref": "grama_20_var_variants#6",
       "category": "ground",
@@ -167,7 +209,7 @@
       "variantIndex": 6
     },
     {
-      "id": 21,
+      "id": 27,
       "name": "grama_20_var_variants · 8",
       "ref": "grama_20_var_variants#7",
       "category": "ground",
@@ -176,7 +218,7 @@
       "variantIndex": 7
     },
     {
-      "id": 22,
+      "id": 28,
       "name": "grama_20_var_variants · 9",
       "ref": "grama_20_var_variants#8",
       "category": "ground",
@@ -185,7 +227,7 @@
       "variantIndex": 8
     },
     {
-      "id": 23,
+      "id": 29,
       "name": "grama_20_var_variants · 10",
       "ref": "grama_20_var_variants#9",
       "category": "ground",
@@ -194,7 +236,7 @@
       "variantIndex": 9
     },
     {
-      "id": 24,
+      "id": 30,
       "name": "grama_20_var_variants · 11",
       "ref": "grama_20_var_variants#10",
       "category": "ground",
@@ -203,7 +245,7 @@
       "variantIndex": 10
     },
     {
-      "id": 25,
+      "id": 31,
       "name": "grama_20_var_variants · 12",
       "ref": "grama_20_var_variants#11",
       "category": "ground",
@@ -212,7 +254,7 @@
       "variantIndex": 11
     },
     {
-      "id": 26,
+      "id": 32,
       "name": "grama_20_var_variants · 13",
       "ref": "grama_20_var_variants#12",
       "category": "ground",
@@ -221,7 +263,7 @@
       "variantIndex": 12
     },
     {
-      "id": 27,
+      "id": 33,
       "name": "grama_20_var_variants · 14",
       "ref": "grama_20_var_variants#13",
       "category": "ground",
@@ -230,7 +272,7 @@
       "variantIndex": 13
     },
     {
-      "id": 28,
+      "id": 34,
       "name": "grama_20_var_variants · 15",
       "ref": "grama_20_var_variants#14",
       "category": "ground",
@@ -239,7 +281,7 @@
       "variantIndex": 14
     },
     {
-      "id": 29,
+      "id": 35,
       "name": "grama_20_var_variants · 16",
       "ref": "grama_20_var_variants#15",
       "category": "ground",
@@ -248,7 +290,7 @@
       "variantIndex": 15
     },
     {
-      "id": 30,
+      "id": 36,
       "name": "grama_20_var_variants · 17",
       "ref": "grama_20_var_variants#16",
       "category": "ground",
@@ -257,7 +299,7 @@
       "variantIndex": 16
     },
     {
-      "id": 31,
+      "id": 37,
       "name": "grama_20_var_variants · 18",
       "ref": "grama_20_var_variants#17",
       "category": "ground",
@@ -266,7 +308,7 @@
       "variantIndex": 17
     },
     {
-      "id": 32,
+      "id": 38,
       "name": "grama_20_var_variants · 19",
       "ref": "grama_20_var_variants#18",
       "category": "ground",
@@ -275,7 +317,7 @@
       "variantIndex": 18
     },
     {
-      "id": 33,
+      "id": 39,
       "name": "grama_20_var_variants · 20",
       "ref": "grama_20_var_variants#19",
       "category": "ground",
@@ -284,7 +326,7 @@
       "variantIndex": 19
     },
     {
-      "id": 34,
+      "id": 40,
       "name": "ground_pedra_variants · 1",
       "ref": "ground_pedra_variants#0",
       "category": "ground",
@@ -293,7 +335,7 @@
       "variantIndex": 0
     },
     {
-      "id": 35,
+      "id": 41,
       "name": "ground_pedra_variants · 2",
       "ref": "ground_pedra_variants#1",
       "category": "ground",
@@ -302,7 +344,7 @@
       "variantIndex": 1
     },
     {
-      "id": 36,
+      "id": 42,
       "name": "ground_pedra_variants · 3",
       "ref": "ground_pedra_variants#2",
       "category": "ground",
@@ -311,7 +353,7 @@
       "variantIndex": 2
     },
     {
-      "id": 37,
+      "id": 43,
       "name": "ground_pedra_variants · 4",
       "ref": "ground_pedra_variants#3",
       "category": "ground",

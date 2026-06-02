@@ -1,8 +1,32 @@
 /**
- * Máscaras 4-bit: indica de quais lados há GRAMA vizinha ao chão.
- * O tile de borda desenha filete de grama nas bordas correspondentes.
- * Bits: N=1, E=2, S=4, O=8.
+ * Máscaras auto-borda: cardinais 1–15 (bits N/E/S/O) + diagonais 16/32/64/128.
  */
+import {
+    inferBorderSlotGrid,
+    normalizeBorderCellsToNeighbor3x3,
+} from './borderSetExport';
+import { getRequiredMaskForPreviewCell } from './borderSetPreview';
+import {
+    BORDER_MASK_GRASS_HINTS,
+    BORDER_MASK_GRASS_LABELS,
+    CARDINAL_4_SLOTS,
+    getCardinal4SlotMeta,
+    getExpectedMaskForSlot,
+    getInnerCorner4SlotMeta,
+    getNeighbor3x3SlotMeta,
+    INNER_CORNER_4_SLOTS,
+    previewCellForSlotCoords,
+    slotCoordsForPreviewCell,
+    type BorderSlotLayoutMode,
+} from './borderNeighborSlots';
+import { BORDER_INNER_CORNER_MASKS } from '../engine/borderMaskBits';
+import {
+    BORDER_MASK_NE,
+    BORDER_MASK_NW,
+    BORDER_MASK_SE,
+    BORDER_MASK_SW,
+} from '../engine/borderMaskBits';
+
 export const BORDER_MASK_LABELS: Record<number, string> = {
     0: '0 — Sem borda (interior)',
     1: '1 — Grama ↑ Norte',
@@ -20,6 +44,10 @@ export const BORDER_MASK_LABELS: Record<number, string> = {
     13: '13 — Grama ↑↓← Norte+Sul+Oeste',
     14: '14 — Grama ↓→← Sul+Leste+Oeste',
     15: '15 — Grama nos 4 lados (ilha)',
+    16: '16 — Grama ↗ diagonal NE (só canto)',
+    32: '32 — Grama ↘ diagonal SE (só canto)',
+    64: '64 — Grama ↙ diagonal SO (só canto)',
+    128: '128 — Grama ↖ diagonal NO (só canto)',
 };
 
 /** Texto curto ao selecionar máscara (legenda dinâmica). */
@@ -40,6 +68,10 @@ export const BORDER_MASK_HINTS: Record<number, string> = {
     13: 'Grama em cima, embaixo e à esquerda → três lados (falta leste).',
     14: 'Grama embaixo, esquerda e direita → três lados (falta norte).',
     15: 'Grama em todos os lados — chão cercado (bolsão).',
+    16: 'Só grama na diagonal NE — canto do filete (pedra diagonal ao NW da grama).',
+    32: 'Só grama na diagonal SE — canto (pedra diagonal ao SW da grama).',
+    64: 'Só grama na diagonal SO — canto (pedra diagonal ao NE da grama).',
+    128: 'Só grama na diagonal NO — canto (pedra diagonal ao SE da grama).',
 };
 
 export interface BorderSetCellAssignment {
@@ -52,11 +84,77 @@ export interface BorderSetCellAssignment {
     sourceRow: number;
 }
 
+const MASK_SELECT_VALUES = [
+    ...Array.from({ length: 16 }, (_, mask) => mask),
+    BORDER_MASK_NE,
+    BORDER_MASK_SE,
+    BORDER_MASK_SW,
+    BORDER_MASK_NW,
+];
+
 function maskSelectOptions(selected: number): string {
-    return Array.from({ length: 16 }, (_, mask) => {
-        const label = BORDER_MASK_LABELS[mask] ?? String(mask);
+    return MASK_SELECT_VALUES.map((mask) => {
+        const label = BORDER_MASK_GRASS_LABELS[mask] ?? BORDER_MASK_LABELS[mask] ?? String(mask);
         return `<option value="${mask}"${mask === selected ? ' selected' : ''}>${label}</option>`;
     }).join('');
+}
+
+const NEIGHBOR_3X3_MASKS = [1, 2, 4, 8, 16, 32, 64, 128] as const;
+
+function detectSlotLayoutMode(cols: number, rows: number, assignments: Map<string, number>): BorderSlotLayoutMode {
+    if (cols === 3 && rows === 3) {
+        const present = new Set(
+            [...assignments.values()].filter((m) => m > 0)
+        );
+        if (NEIGHBOR_3X3_MASKS.every((m) => present.has(m))) {
+            return 'neighbor3x3';
+        }
+        let matches = true;
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                const expected = getNeighbor3x3SlotMeta(col, row)?.mask ?? 0;
+                if ((assignments.get(`${col},${row}`) ?? 0) !== expected) {
+                    matches = false;
+                    break;
+                }
+            }
+            if (!matches) break;
+        }
+        if (matches) return 'neighbor3x3';
+    }
+    if (cols === 4 && rows === 1) {
+        let matches = true;
+        for (let col = 0; col < 4; col++) {
+            const expected = getCardinal4SlotMeta(col)?.mask ?? 0;
+            if ((assignments.get(`${col},0`) ?? 0) !== expected) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) return 'cardinal4';
+    }
+    return 'free';
+}
+
+function formatSlotLabel(col: number, row: number, mode: BorderSlotLayoutMode): string {
+    if (mode === 'neighbor3x3') {
+        const meta = getNeighbor3x3SlotMeta(col, row);
+        if (meta) return `${meta.grassSideLabel} · M${meta.mask}`;
+    }
+    if (mode === 'cardinal4' && row === 0) {
+        const meta = getCardinal4SlotMeta(col);
+        if (meta) return `${meta.grassSideLabel} · M${meta.mask}`;
+    }
+    if (mode === 'innerCorner4' && row === 0) {
+        const meta = getInnerCorner4SlotMeta(col);
+        if (meta) return `${meta.grassSideLabel} · M${meta.mask}`;
+    }
+    return `Slot Col ${col + 1} · Lin ${row + 1}`;
+}
+
+function innerCornerLabelForMask(mask: number): string | null {
+    const meta = INNER_CORNER_4_SLOTS.find((s) => s.mask === mask);
+    return meta ? `${meta.grassSideLabel} · M${meta.mask}` : null;
 }
 
 export function createBorderSetCalibratorUi(options: {
@@ -72,6 +170,9 @@ export function createBorderSetCalibratorUi(options: {
     const sourceTiles = new Map<string, { col: number; row: number }>();
     let activeCol = -1;
     let activeRow = -1;
+    let slotLayoutMode: BorderSlotLayoutMode = 'free';
+    let slotGridCols = 1;
+    let slotGridRows = 1;
 
     function hasActiveSlot(): boolean {
         return activeCol >= 0 && activeRow >= 0;
@@ -110,11 +211,36 @@ export function createBorderSetCalibratorUi(options: {
         }
         options.pickHintEl.textContent =
             `Slot Col ${activeCol + 1} · Lin ${activeRow + 1} — clique no tile na imagem à esquerda para indicar qual célula da sheet usa esta borda.`;
+        if (slotLayoutMode !== 'free') {
+            const meta =
+                slotLayoutMode === 'neighbor3x3'
+                    ? getNeighbor3x3SlotMeta(activeCol, activeRow)
+                    : getCardinal4SlotMeta(activeCol);
+            if (meta && meta.mask > 0) {
+                options.pickHintEl.textContent = `${meta.grassSideLabel} (M${meta.mask}): ${meta.fileteHint}. Clique o tile na sheet.`;
+            }
+        }
     }
 
     function updateMaskHint(mask: number): void {
         if (!options.maskHintEl) return;
-        options.maskHintEl.textContent = BORDER_MASK_HINTS[mask] ?? '';
+        const grassHint = BORDER_MASK_GRASS_HINTS[mask];
+        options.maskHintEl.textContent = grassHint ?? BORDER_MASK_HINTS[mask] ?? '';
+    }
+
+    function isMaskLocked(col: number, row: number): boolean {
+        if (slotLayoutMode === 'free') return false;
+        return getExpectedMaskForSlot(slotLayoutMode, col, row) !== null;
+    }
+
+    function applyGuidedMaskClasses(rowEl: HTMLElement, col: number, row: number, mask: number): void {
+        rowEl.classList.remove('is-mask-mismatch');
+        if (slotLayoutMode === 'free') return;
+        const expected = getExpectedMaskForSlot(slotLayoutMode, col, row);
+        if (expected === null) return;
+        if (expected !== mask) {
+            rowEl.classList.add('is-mask-mismatch');
+        }
     }
 
     function setActiveCell(col: number, row: number, scrollIntoView = false): void {
@@ -146,6 +272,8 @@ export function createBorderSetCalibratorUi(options: {
     }
 
     function rebuildCellList(cols: number, rows: number): void {
+        slotGridCols = cols;
+        slotGridRows = rows;
         if (hasActiveSlot()) {
             activeCol = Math.min(activeCol, Math.max(0, cols - 1));
             activeRow = Math.min(activeRow, Math.max(0, rows - 1));
@@ -161,36 +289,50 @@ export function createBorderSetCalibratorUi(options: {
                     sourceTiles.set(k, { col, row });
                 }
                 const mask = assignments.get(k) ?? 0;
+                const expectedMask = getExpectedMaskForSlot(slotLayoutMode, col, row);
+                const locked = isMaskLocked(col, row);
+                const isCenter = expectedMask === 0 && slotLayoutMode === 'neighbor3x3';
                 const rowEl = document.createElement('div');
-                rowEl.className = `cal-border-cell-row${mask === 0 && cols * rows > 1 ? ' is-unassigned' : ''}`;
+                rowEl.className = `cal-border-cell-row${mask === 0 && cols * rows > 1 && !isCenter ? ' is-unassigned' : ''}${isCenter ? ' is-center-slot' : ''}`;
                 rowEl.dataset.col = String(col);
                 rowEl.dataset.row = String(row);
                 if (hasActiveSlot() && col === activeCol && row === activeRow) {
                     rowEl.classList.add('is-active');
                 }
+                applyGuidedMaskClasses(rowEl, col, row, mask);
+                const slotLabel =
+                    innerCornerLabelForMask(mask) ?? formatSlotLabel(col, row, slotLayoutMode);
+                const selectHtml = locked
+                    ? `<span class="cal-border-mask-locked" title="Máscara fixa neste preset">M${expectedMask ?? 0}</span>`
+                    : `<select aria-label="Máscara slot coluna ${col + 1}, linha ${row + 1}">${maskSelectOptions(mask)}</select>`;
                 rowEl.innerHTML = `
                     <div class="cal-border-cell-main">
-                        <span class="cal-border-cell-label" title="Slot lógico coluna ${col + 1}, linha ${row + 1}">Slot Col ${col + 1} · Lin ${row + 1}</span>
-                        <span class="cal-border-cell-source">${formatSourceLabel(col, row)}</span>
+                        <span class="cal-border-cell-label" title="Slot lógico coluna ${col + 1}, linha ${row + 1}">${slotLabel}</span>
+                        <span class="cal-border-cell-source">${isCenter ? 'Centro da grama — não exporta borda' : formatSourceLabel(col, row)}</span>
                     </div>
-                    <select aria-label="Máscara slot coluna ${col + 1}, linha ${row + 1}">${maskSelectOptions(mask)}</select>
+                    ${selectHtml}
                 `;
-                rowEl.addEventListener('click', (e) => {
-                    if ((e.target as HTMLElement).closest('select')) return;
-                    setActiveCell(col, row, false);
-                    options.onChange?.();
-                });
-                const select = rowEl.querySelector('select') as HTMLSelectElement;
-                select.addEventListener('change', () => {
-                    const value = parseInt(select.value, 10);
-                    assignments.set(k, Number.isFinite(value) ? value : 0);
-                    rowEl.classList.toggle('is-unassigned', value === 0 && cols * rows > 1);
-                    if (col === activeCol && row === activeRow) {
-                        updateMaskHint(value);
-                    }
-                    options.onChange?.();
-                });
-                select.addEventListener('click', (e) => e.stopPropagation());
+                if (!isCenter) {
+                    rowEl.addEventListener('click', (e) => {
+                        if ((e.target as HTMLElement).closest('select')) return;
+                        setActiveCell(col, row, false);
+                        options.onChange?.();
+                    });
+                }
+                const select = rowEl.querySelector('select') as HTMLSelectElement | null;
+                if (select) {
+                    select.addEventListener('change', () => {
+                        const value = parseInt(select.value, 10);
+                        assignments.set(k, Number.isFinite(value) ? value : 0);
+                        rowEl.classList.toggle('is-unassigned', value === 0 && cols * rows > 1);
+                        applyGuidedMaskClasses(rowEl, col, row, value);
+                        if (col === activeCol && row === activeRow) {
+                            updateMaskHint(value);
+                        }
+                        options.onChange?.();
+                    });
+                    select.addEventListener('click', (e) => e.stopPropagation());
+                }
                 options.listEl.appendChild(rowEl);
             }
         }
@@ -213,6 +355,25 @@ export function createBorderSetCalibratorUi(options: {
         });
     }
 
+    /** Grade 3×3 alinhada aos 8 vizinhos da grama no mapa (centro = slot vazio). */
+    function applyFullNeighborPreset(): void {
+        assignments.clear();
+        sourceTiles.clear();
+        for (let row = 0; row < 3; row++) {
+            for (let col = 0; col < 3; col++) {
+                const meta = getNeighbor3x3SlotMeta(col, row)!;
+                assignments.set(key(col, row), meta.mask);
+                sourceTiles.set(key(col, row), { col, row });
+            }
+        }
+        slotLayoutMode = 'neighbor3x3';
+        activeCol = -1;
+        activeRow = -1;
+        rebuildCellList(3, 3);
+        options.onChange?.();
+    }
+
+    /** @deprecated Preset numérico 0…N — preferir applyFullNeighborPreset ou applyCardinalPreset. */
     function applyPreset(cols: number, rows: number): void {
         assignments.clear();
         sourceTiles.clear();
@@ -226,43 +387,92 @@ export function createBorderSetCalibratorUi(options: {
         }
         activeCol = -1;
         activeRow = -1;
+        slotLayoutMode = 'free';
         rebuildCellList(cols, rows);
         options.onChange?.();
     }
-
-    /** 4 slots com máscaras 1, 2, 4, 8 (N, E, S, O) — não confundir com índice do slot. */
     function applyCardinalPreset(): void {
         assignments.clear();
         sourceTiles.clear();
-        const cardinals: Array<{ col: number; row: number; mask: number }> = [
-            { col: 0, row: 0, mask: 1 },
-            { col: 1, row: 0, mask: 2 },
-            { col: 2, row: 0, mask: 4 },
-            { col: 3, row: 0, mask: 8 },
-        ];
-        for (const { col, row, mask } of cardinals) {
-            assignments.set(key(col, row), mask);
-            sourceTiles.set(key(col, row), { col, row });
-        }
+        CARDINAL_4_SLOTS.forEach((meta, col) => {
+            assignments.set(key(col, 0), meta.mask);
+            sourceTiles.set(key(col, 0), { col, row: 0 });
+        });
+        slotLayoutMode = 'cardinal4';
         activeCol = -1;
         activeRow = -1;
         rebuildCellList(4, 1);
         options.onChange?.();
     }
 
-    /** Restaura máscaras e remapeamentos salvos ao reabrir um conjunto. */
-    function loadAssignments(cells: BorderSetCellAssignment[], cols: number, rows: number): void {
+    /** Só os 4 cantos internos (L) — máscaras 3, 6, 9, 12. */
+    function applyInnerCornerPreset(): void {
         assignments.clear();
         sourceTiles.clear();
-        for (let row = 0; row < rows; row++) {
-            for (let col = 0; col < cols; col++) {
+        INNER_CORNER_4_SLOTS.forEach((meta, col) => {
+            assignments.set(key(col, 0), meta.mask);
+            sourceTiles.set(key(col, 0), { col, row: 0 });
+        });
+        slotLayoutMode = 'innerCorner4';
+        activeCol = -1;
+        activeRow = -1;
+        rebuildCellList(4, 1);
+        options.onChange?.();
+    }
+
+    /**
+     * Mantém bordas 9 vizinhos (se já existirem) e adiciona linha com 4 quinas internas.
+     */
+    function appendInnerCornerSlots(): void {
+        const innerRow = slotGridRows >= 3 ? slotGridRows : 3;
+        INNER_CORNER_4_SLOTS.forEach((meta, col) => {
+            const k = key(col, innerRow);
+            assignments.set(k, meta.mask);
+            if (!sourceTiles.has(k)) {
+                sourceTiles.set(k, { col, row: innerRow });
+            }
+        });
+        slotGridCols = Math.max(slotGridCols, 4);
+        slotGridRows = innerRow + 1;
+        if (slotLayoutMode === 'neighbor3x3') {
+            slotLayoutMode = 'free';
+        }
+        activeCol = -1;
+        activeRow = -1;
+        rebuildCellList(slotGridCols, slotGridRows);
+        options.onChange?.();
+    }
+
+    /** Restaura máscaras e remapeamentos salvos ao reabrir um conjunto. */
+    function loadAssignments(cells: BorderSetCellAssignment[], cols: number, rows: number): void {
+        const inferred = inferBorderSlotGrid(cells);
+        let useCols = Math.max(cols, inferred.cols);
+        let useRows = Math.max(rows, inferred.rows);
+
+        let normalized = cells;
+        const activeMasks = cells.filter((c) => c.mask > 0);
+        if (activeMasks.length >= 4 && useCols < 3) {
+            useCols = 3;
+            useRows = 3;
+        }
+        const hasInnerCorner = activeMasks.some((c) =>
+            (BORDER_INNER_CORNER_MASKS as readonly number[]).includes(c.mask)
+        );
+        if (useCols === 3 && useRows === 3 && activeMasks.length >= 4 && !hasInnerCorner) {
+            normalized = normalizeBorderCellsToNeighbor3x3(cells);
+        }
+
+        assignments.clear();
+        sourceTiles.clear();
+        for (let row = 0; row < useRows; row++) {
+            for (let col = 0; col < useCols; col++) {
                 const k = key(col, row);
                 assignments.set(k, 0);
                 sourceTiles.set(k, { col, row });
             }
         }
-        for (const cell of cells) {
-            if (cell.col < 0 || cell.col >= cols || cell.row < 0 || cell.row >= rows) continue;
+        for (const cell of normalized) {
+            if (cell.col < 0 || cell.col >= useCols || cell.row < 0 || cell.row >= useRows) continue;
             const k = key(cell.col, cell.row);
             assignments.set(k, cell.mask);
             sourceTiles.set(k, {
@@ -272,16 +482,91 @@ export function createBorderSetCalibratorUi(options: {
         }
         activeCol = -1;
         activeRow = -1;
-        rebuildCellList(cols, rows);
+        slotGridCols = useCols;
+        slotGridRows = useRows;
+        slotLayoutMode = detectSlotLayoutMode(useCols, useRows, assignments);
+        rebuildCellList(useCols, useRows);
         options.onChange?.();
+    }
+    /**
+     * Clique na prévia 3×3: define máscara correta + slot ativo (e aplica preset 9×9 se necessário).
+     */
+    function selectSlotFromPreviewGrid(
+        gridX: number,
+        gridY: number
+    ): { ok: boolean; cols: number; rows: number } {
+        const neededMask = getRequiredMaskForPreviewCell(gridX, gridY);
+        if (neededMask === 0) {
+            return { ok: false, cols: slotGridCols, rows: slotGridRows };
+        }
+
+        const hasAnyMask = [...assignments.values()].some((m) => m > 0);
+        if (!hasAnyMask) {
+            applyFullNeighborPreset();
+        }
+
+        let slot = slotCoordsForPreviewCell(
+            slotLayoutMode,
+            gridX,
+            gridY,
+            slotGridCols,
+            slotGridRows
+        );
+        if (!slot) {
+            slot = slotCoordsForPreviewCell('neighbor3x3', gridX, gridY, 3, 3);
+        }
+        if (!slot) {
+            return { ok: false, cols: slotGridCols, rows: slotGridRows };
+        }
+
+        const k = key(slot.col, slot.row);
+        assignments.set(k, neededMask);
+        rebuildCellList(slotGridCols, slotGridRows);
+        setActiveCell(slot.col, slot.row, true);
+        options.onChange?.();
+        return { ok: true, cols: slotGridCols, rows: slotGridRows };
     }
 
     /** Clique no canvas: associa tile da sheet ao slot ativo. */
     function handleCanvasPick(sheetCol: number, sheetRow: number): boolean {
         if (!hasActiveSlot()) return false;
+        if (slotLayoutMode === 'neighbor3x3' && activeCol === 1 && activeRow === 1) return false;
         const k = key(activeCol, activeRow);
+        let mask = assignments.get(k) ?? 0;
+        const maskWasZero = mask === 0;
+        if (maskWasZero) {
+            const previewCell = previewCellForSlotCoords(
+                slotLayoutMode,
+                activeCol,
+                activeRow,
+                slotGridCols,
+                slotGridRows
+            );
+            if (previewCell) {
+                mask = getRequiredMaskForPreviewCell(previewCell.x, previewCell.y);
+                if (mask > 0) {
+                    assignments.set(k, mask);
+                }
+            }
+        }
         sourceTiles.set(k, { col: sheetCol, row: sheetRow });
-        refreshSourceLabels();
+        if (maskWasZero && mask > 0) {
+            rebuildCellList(slotGridCols, slotGridRows);
+            setActiveCell(activeCol, activeRow, false);
+        } else {
+            refreshSourceLabels();
+        }
+        const rowEl = options.listEl.querySelector(
+            `.cal-border-cell-row[data-col="${activeCol}"][data-row="${activeRow}"]`
+        ) as HTMLElement | null;
+        if (rowEl) {
+            rowEl.classList.remove('is-unassigned');
+            applyGuidedMaskClasses(rowEl, activeCol, activeRow, mask);
+            const sourceEl = rowEl.querySelector('.cal-border-cell-source');
+            if (sourceEl) {
+                sourceEl.textContent = formatSourceLabel(activeCol, activeRow);
+            }
+        }
         options.onChange?.();
         return true;
     }
@@ -315,13 +600,46 @@ export function createBorderSetCalibratorUi(options: {
         return getSource(col, row);
     }
 
+    /** Ativa o slot que usa esta máscara (ex. quina L M6). */
+    function selectSlotByMask(mask: number): boolean {
+        if (mask <= 0) return false;
+        for (let row = 0; row < slotGridRows; row++) {
+            for (let col = 0; col < slotGridCols; col++) {
+                if ((assignments.get(key(col, row)) ?? 0) === mask) {
+                    setActiveCell(col, row, true);
+                    options.onChange?.();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** Cria slots das quinas L se faltarem e ativa o da máscara pedida. */
+    function ensureAndSelectInnerCorner(mask: number): boolean {
+        if (mask <= 0) return false;
+        if (selectSlotByMask(mask)) return true;
+
+        const hasNeighborMask = [...assignments.values()].some(
+            (m) => m === 1 || m === 2 || m === 4 || m === 8 || m >= 16
+        );
+        if (!hasNeighborMask) {
+            applyFullNeighborPreset();
+        }
+        appendInnerCornerSlots();
+        return selectSlotByMask(mask);
+    }
+
     setBadge(options.fillTerrain ?? 'grama');
     updatePickHint();
 
     return {
         rebuildCellList,
         applyPreset,
+        applyFullNeighborPreset,
         applyCardinalPreset,
+        applyInnerCornerPreset,
+        appendInnerCornerSlots,
         loadAssignments,
         hasActiveSlot,
         clearActiveSlot,
@@ -332,5 +650,10 @@ export function createBorderSetCalibratorUi(options: {
         getActiveCell,
         getMaskAt,
         getSourceAt,
+        getSlotLayoutMode: () => slotLayoutMode,
+        getSlotGridSize: () => ({ cols: slotGridCols, rows: slotGridRows }),
+        selectSlotFromPreviewGrid,
+        selectSlotByMask,
+        ensureAndSelectInnerCorner,
     };
 }

@@ -1,5 +1,11 @@
 import { ENGINE_CONFIG } from '../engine/config';
 import type { BorderSetCellAssignment } from './borderSetCalibratorUi';
+import { getNeighbor3x3SlotMeta } from './borderNeighborSlots';
+import {
+    BORDER_CARDINAL_MASKS,
+    BORDER_DIAGONAL_MASKS,
+    BORDER_INNER_CORNER_MASKS,
+} from '../engine/borderMaskBits';
 
 export interface BorderSetCalibrationPayload {
     frameWidth: number;
@@ -11,10 +17,42 @@ export interface BorderSetCalibrationPayload {
     /** Grade de fatiamento da spritesheet (frames na imagem). */
     gridCols: number;
     gridRows: number;
-    /** Grade lógica de slots de máscara (3×3, 4×4, …). */
+    /** Grade lógica de slots de máscara (3×3, 4×1, …). */
     borderSlotCols: number;
     borderSlotRows: number;
     borderSetCells: BorderSetCellAssignment[];
+}
+
+/**
+ * Reorganiza células salvas para a grade 3×3 do preset «9 vizinhos»
+ * (col/row do slot = posição na lista, máscara fixa por slot).
+ */
+export function normalizeBorderCellsToNeighbor3x3(
+    cells: BorderSetCellAssignment[]
+): BorderSetCellAssignment[] {
+    const byMask = new Map<number, BorderSetCellAssignment>();
+    for (const cell of cells) {
+        if (cell.mask <= 0) continue;
+        if (!byMask.has(cell.mask)) {
+            byMask.set(cell.mask, cell);
+        }
+    }
+    const out: BorderSetCellAssignment[] = [];
+    for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+            const meta = getNeighbor3x3SlotMeta(col, row);
+            if (!meta) continue;
+            const saved = byMask.get(meta.mask);
+            out.push({
+                col,
+                row,
+                mask: meta.mask,
+                sourceCol: saved?.sourceCol ?? col,
+                sourceRow: saved?.sourceRow ?? row,
+            });
+        }
+    }
+    return out;
 }
 
 /** Deduz tamanho da grade de slots a partir das células com máscara ativa. */
@@ -23,7 +61,7 @@ export function inferBorderSlotGrid(
 ): { cols: number; rows: number } {
     const active = cells.filter((c) => c.mask > 0);
     if (active.length === 0) {
-        return { cols: 4, rows: 4 };
+        return { cols: 3, rows: 3 };
     }
     let maxCol = 0;
     let maxRow = 0;
@@ -37,14 +75,35 @@ export function inferBorderSlotGrid(
     };
 }
 
-/** Máscaras cardinais mínimas para um conjunto funcional. */
-export const BORDER_CARDINAL_MASKS = [1, 2, 4, 8] as const;
-
 export function getMissingCardinalBorderMasks(cells: BorderSetCellAssignment[]): number[] {
     const present = new Set(
         cells.filter((c) => c.mask > 0).map((c) => c.mask)
     );
     return BORDER_CARDINAL_MASKS.filter((m) => !present.has(m));
+}
+
+export function getMissingInnerCornerBorderMasks(cells: BorderSetCellAssignment[]): number[] {
+    const present = new Set(cells.filter((c) => c.mask > 0).map((c) => c.mask));
+    return BORDER_INNER_CORNER_MASKS.filter((m) => !present.has(m));
+}
+
+export function getMissingDiagonalBorderMasks(cells: BorderSetCellAssignment[]): number[] {
+    const active = cells.filter((c) => c.mask > 0);
+    const present = new Set(active.map((c) => c.mask));
+    const hasAnyDiagonal = BORDER_DIAGONAL_MASKS.some((m) => present.has(m));
+    if (!hasAnyDiagonal) return [];
+    return BORDER_DIAGONAL_MASKS.filter((m) => !present.has(m));
+}
+
+export function getDuplicateBorderMasks(cells: BorderSetCellAssignment[]): number[] {
+    const seen = new Set<number>();
+    const dupes = new Set<number>();
+    for (const cell of cells) {
+        if (cell.mask <= 0) continue;
+        if (seen.has(cell.mask)) dupes.add(cell.mask);
+        seen.add(cell.mask);
+    }
+    return [...dupes].sort((a, b) => a - b);
 }
 
 export interface BorderMaskExport {
@@ -89,7 +148,7 @@ export function cropFrameToBase64(
     return canvas.toDataURL('image/png');
 }
 
-/** Extrai um PNG por máscara (1–15) a partir da sheet calibrada. */
+/** Extrai um PNG por máscara ativa a partir da sheet calibrada. */
 export function buildBorderMaskExports(
     image: HTMLImageElement,
     cal: BorderSetCalibrationPayload,

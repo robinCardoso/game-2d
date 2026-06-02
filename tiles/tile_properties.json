@@ -69,6 +69,17 @@
     "speedModifier": 1,
     "isStair": false
   },
+  "grass_edges_mask_4": {
+    "nameOverride": "Bordas de grama · máscara 4",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 4,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
   "grass_edges_mask_6": {
     "nameOverride": "Bordas de grama · máscara 6",
     "assetType": "border",
@@ -96,6 +107,61 @@
     "assetType": "border",
     "tileRole": "border_overlay",
     "borderMask": 9,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_12": {
+    "nameOverride": "Bordas de grama · máscara 12",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 12,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_16": {
+    "nameOverride": "Bordas de grama · máscara 16",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 16,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_32": {
+    "nameOverride": "Bordas de grama · máscara 32",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 32,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_64": {
+    "nameOverride": "Bordas de grama · máscara 64",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 64,
+    "borderSetId": "grass_edges",
+    "paletteCategory": "border",
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false
+  },
+  "grass_edges_mask_128": {
+    "nameOverride": "Bordas de grama · máscara 128",
+    "assetType": "border",
+    "tileRole": "border_overlay",
+    "borderMask": 128,
     "borderSetId": "grass_edges",
     "paletteCategory": "border",
     "walkable": true,

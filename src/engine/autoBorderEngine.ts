@@ -1,5 +1,10 @@
 import type { LayerMap } from './mapPaintLayers';
 import { clearLayerCell, getLayerCell, setLayerCell } from './mapPaintLayers';
+import {
+    computeBorderMaskFromGrassNeighbors as computeMaskBits,
+    isSupportedBorderMask,
+    resolveBorderMaskForRegistry,
+} from './borderMaskBits';
 import type { RegistryTile, TileRegistry, WorldMap } from './types';
 import { ENGINE_CONFIG } from './config';
 
@@ -29,7 +34,9 @@ export function cellHasGrass(
 ): boolean {
     const overlay = getLayerCell(ctx.grassOverlay, z, x, y);
     if (overlay !== EMPTY_TILE_ID) {
-        return isGrassTile(ctx.registry[overlay], ctx.fillTerrain);
+        // Qualquer tile presente no overlay "grass" conta como grama.
+        // Isso evita desenhar borda por cima caso metadados do tile estejam inconsistentes.
+        return true;
     }
     const baseId = ctx.worldMap[z]?.[y]?.[x] ?? EMPTY_TILE_ID;
     if (baseId === EMPTY_TILE_ID) return false;
@@ -51,23 +58,26 @@ export function isEligibleBorderFloorCell(
 ): boolean {
     if (cellHasGrass(ctx, z, x, y)) return false;
     const baseId = ctx.worldMap[z]?.[y]?.[x] ?? EMPTY_TILE_ID;
-    if (baseId === EMPTY_TILE_ID) return false;
+    // Permite borda em vazio quando a grama foi pintada sem base (estilo Tibia).
+    if (baseId === EMPTY_TILE_ID) return true;
     return isGroundBaseTile(ctx.registry[baseId]);
 }
 
-/** Bits N=1, E=2, S=4, O=8 — lados onde há grama vizinha. */
+/** Cardinais (1–15) com prioridade; diagonais (16–128) se só canto encosta na grama. */
 export function computeBorderMaskFromGrassNeighbors(
     ctx: Pick<AutoBorderContext, 'worldMap' | 'grassOverlay' | 'registry' | 'fillTerrain'>,
     z: number,
     x: number,
     y: number
 ): number {
-    let mask = 0;
-    if (cellHasGrass(ctx, z, x, y - 1)) mask |= 1;
-    if (cellHasGrass(ctx, z, x + 1, y)) mask |= 2;
-    if (cellHasGrass(ctx, z, x, y + 1)) mask |= 4;
-    if (cellHasGrass(ctx, z, x - 1, y)) mask |= 8;
-    return mask;
+    return computeMaskBits(
+        {
+            hasGrass: (floor, tx, ty) => cellHasGrass(ctx, floor, tx, ty),
+        },
+        z,
+        x,
+        y
+    );
 }
 
 export function buildBorderMaskTileIndex(
@@ -80,7 +90,7 @@ export function buildBorderMaskTileIndex(
         const setId = (tile as RegistryTile & { borderSetId?: string }).borderSetId;
         if (setId !== borderSetId) continue;
         const mask = (tile as RegistryTile & { borderMask?: number }).borderMask;
-        if (typeof mask === 'number' && mask >= 1 && mask <= 15) {
+        if (typeof mask === 'number' && isSupportedBorderMask(mask)) {
             index.set(mask, tile.id);
         }
     }
@@ -98,7 +108,13 @@ export function recalculateAutoBorderCell(
         clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
         return;
     }
-    const mask = computeBorderMaskFromGrassNeighbors(ctx, z, x, y);
+    const rawMask = computeBorderMaskFromGrassNeighbors(ctx, z, x, y);
+    if (rawMask === 0) {
+        clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
+        return;
+    }
+    const availableMasks = new Set(maskIndex.keys());
+    const mask = resolveBorderMaskForRegistry(rawMask, availableMasks);
     if (mask === 0) {
         clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
         return;
@@ -122,10 +138,12 @@ export function recalculateAutoBorderRegion(
     const maskIndex = buildBorderMaskTileIndex(ctx.registry, ctx.borderSetId);
     if (maskIndex.size === 0) return;
 
-    const x0 = Math.max(0, minX - 1);
-    const y0 = Math.max(0, minY - 1);
-    const x1 = Math.min(ctx.mapSize - 1, maxX + 1);
-    const y1 = Math.min(ctx.mapSize - 1, maxY + 1);
+    /** Halo 2: pedra a 1 célula + cantos diagonais da área pintada. */
+    const halo = 2;
+    const x0 = Math.max(0, minX - halo);
+    const y0 = Math.max(0, minY - halo);
+    const x1 = Math.min(ctx.mapSize - 1, maxX + halo);
+    const y1 = Math.min(ctx.mapSize - 1, maxY + halo);
 
     for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {

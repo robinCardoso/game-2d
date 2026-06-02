@@ -290,7 +290,7 @@ export function loadMapFromJson(
 
     const obj = raw as Record<string, unknown>;
 
-    if (obj.version === 1 && (obj.floors || obj.sparseTiles || obj.tiles)) {
+    if (obj.version === 1) {
         const doc = obj as unknown as MapDocument;
 
         const mapSize = clampImportMapSize(doc.size);
@@ -329,6 +329,11 @@ export function loadMapFromJson(
     }
 
     const legacy = raw as WorldMap;
+    if (!Object.keys(legacy).some((k) => Number.isFinite(Number(k)))) {
+        throw new Error(
+            'JSON de mapa inválido: esperado version 1 (MapDocument) ou floors numéricos legados.'
+        );
+    }
     const legacySize = MAP_SIZE;
     return {
         worldMap: ensureAllFloors(cloneWorldMap(legacy), legacySize),

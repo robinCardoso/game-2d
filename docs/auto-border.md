@@ -71,8 +71,10 @@ Lista `#mapSpriteServerSelect`: optgroups **Terreno** / **Itens** (sprites edit�
 |----|--------|
 | `#calibratorBorderSetPanel` | Painel do modo borda |
 | `#calBorderSetBadge` | Badge `grama → chão` |
-| `#calBorderPreset3x3` / `#calBorderPreset4x4` | Presets de grade |
-| `#calBorderCellList` | Máscaras 0–15 por célula |
+| `#calBorderPreset3x3` / `#calBorderPreset4x4` | **9 vizinhos** (8 slots + centro vazio) / **4 cardinais** |
+| `#calBorderCellList` | Máscaras 0–15 + diagonais por célula |
+| `#calBorderPreviewCanvas` | Prévia 3×3 (grama isolada + filetes; vermelho = máscara faltando) |
+| `#calBorderPreviewStatus` | Legenda OK / máscaras faltando |
 | `#calBorderConfirmBtn` | Confirmar calibração do conjunto |
 
 Módulo: `src/editor/borderSetCalibratorUi.ts`.
@@ -107,12 +109,28 @@ Módulo: `src/editor/autoBorderUi.ts` — carrega conjuntos via `GET /api/list-a
 
 ## Detecção de vizinho (motor)
 
+**Cardinais (prioridade):** bits N=1, E=2, S=4, O=8 — pedra com grama em lado reto.
+
+**Diagonais:** se nenhum cardinal encosta na grama, bits NE=16, SE=32, SO=64, NO=128 — pedra só na diagonal da grama (cantos do 3×3).
+
+```text
+[ 32 ][  4 ][ 64 ]     ← diagonais + pedra acima da grama
+[  2 ][GRAMA][  8 ]
+[ 16 ][  1 ][128 ]
+```
+
+Cardinais têm prioridade: se a pedra já tem grama em N/E/S/O, usa máscara 1–15 (inclui cantos compostos 3, 9…).
+
+Módulos: `src/engine/borderMaskBits.ts`, `src/engine/autoBorderEngine.ts`.
+
 ```text
 Para cada célula (x,y) com overlay grama:
   Para cada vizinho cardinal (cx,cy):
     Se célula tem base chão (ground, walkable típico)
     E NÃO tem overlay grama
     → aplicar borderOverlayId do conjunto grass_edges (máscara por bits N/E/S/O)
+  Para cada vizinho diagonal (dx,dy) — só se máscara cardinal = 0:
+    → máscara 16/32/64/128
 ```
 
 Sem comparar `variantGroup` stone vs sand — só “é chão” vs “tem grama ao lado”.
