@@ -24,6 +24,7 @@ import {
 } from './editor/mapSpriteEditor';
 import { initAutoBorderUi, onMapEditorTileSelectionChanged, getActiveBorderSet } from './editor/autoBorderUi';
 import {
+    collectBorderDrawTileIds,
     isGrassPaintSelection,
     recalculateAutoBorderFloor,
     recalculateAutoBorderRegion,
@@ -935,6 +936,18 @@ function buildAutoBorderContext(borderSetId: string, fillTerrain: string): AutoB
     };
 }
 
+function getBorderDrawContext(): Parameters<typeof collectBorderDrawTileIds>[0] {
+    const set = getActiveBorderSet();
+    return {
+        worldMap,
+        grassOverlay: grassOverlayMap,
+        borderOverlay: borderOverlayMap,
+        registry: TILE_TYPES,
+        fillTerrain: set?.fillTerrain ?? 'grass',
+        borderSetId: set?.id ?? 'grass_edges',
+    };
+}
+
 function maybeRecalcAutoBorderAfterPaint(
     z: number,
     minX: number,
@@ -952,6 +965,38 @@ function maybeRecalcAutoBorderAfterPaint(
         maxX,
         maxY
     );
+}
+
+/** Inclui vizinhos ortogonais de células com grama recém-pintadas para recalcular filetes externos. */
+function expandAutoBorderRecalcBounds(
+    z: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number
+): { minX: number; minY: number; maxX: number; maxY: number } {
+    let x0 = minX;
+    let y0 = minY;
+    let x1 = maxX;
+    let y1 = maxY;
+    const emptyId = ENGINE_CONFIG.EMPTY_TILE_ID;
+
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) {
+            if (getLayerCell(grassOverlayMap, z, x, y) === emptyId) continue;
+            x0 = Math.min(x0, x - 1);
+            y0 = Math.min(y0, y - 1);
+            x1 = Math.max(x1, x + 1);
+            y1 = Math.max(y1, y + 1);
+        }
+    }
+
+    return {
+        minX: Math.max(0, x0),
+        minY: Math.max(0, y0),
+        maxX: Math.min(activeMapSize - 1, x1),
+        maxY: Math.min(activeMapSize - 1, y1),
+    };
 }
 
 function recalcAutoBorderForEditingFloor(): void {
@@ -1055,7 +1100,14 @@ function placeTileAt(z: number, x: number, y: number, selectedId: number): void 
     }
 
     if (useGrassOverlay) {
-        maybeRecalcAutoBorderAfterPaint(z, minX, minY, maxX, maxY);
+        const recalcBounds = expandAutoBorderRecalcBounds(z, minX, minY, maxX, maxY);
+        maybeRecalcAutoBorderAfterPaint(
+            z,
+            recalcBounds.minX,
+            recalcBounds.minY,
+            recalcBounds.maxX,
+            recalcBounds.maxY
+        );
     }
 
     if (debugPaint && debugCells.length > 0) {
@@ -2301,7 +2353,9 @@ function draw() {
                 drawTileLayer(grassTid);
                 // Segurança visual: nunca desenhar borda por cima de célula com grama.
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
-                    drawTileLayer(getLayerCell(borderOverlayMap, z, x, y));
+                    for (const borderTid of collectBorderDrawTileIds(getBorderDrawContext(), z, x, y)) {
+                        drawTileLayer(borderTid);
+                    }
                 }
                 
                 if (activeMapEditorTab === 'zones') {

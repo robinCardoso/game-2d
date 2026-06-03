@@ -63,6 +63,19 @@ export function buildMapDocumentExportView(doc: MapDocument): Record<string, unk
         out.tiles = groupSparseEntriesByFloor(doc.sparseTiles);
     }
 
+    if (doc.layers) {
+        const layersOut: NonNullable<MapDocument['layers']> = {};
+        if (doc.layers.grass && Object.keys(doc.layers.grass).length > 0) {
+            layersOut.grass = doc.layers.grass;
+        }
+        if (doc.layers.border && Object.keys(doc.layers.border).length > 0) {
+            layersOut.border = doc.layers.border;
+        }
+        if (Object.keys(layersOut).length > 0) {
+            out.layers = layersOut;
+        }
+    }
+
     if (isNonEmptyObject(doc.metadata)) out.metadata = doc.metadata;
     if (isNonEmptyObject(doc.houses)) out.houses = doc.houses;
     if (isNonEmptyArray(doc.spawns)) out.spawns = doc.spawns;
@@ -83,9 +96,10 @@ function formatSpawn(spawn: MapDocument['spawn'], indent: string): string[] {
 
 function formatTilesByFloor(
     tiles: Record<string, MapTileEntry[]>,
-    indent: string
+    indent: string,
+    propertyName = 'tiles'
 ): string[] {
-    const lines: string[] = [`${indent}"tiles": {`];
+    const lines: string[] = [`${indent}"${propertyName}": {`];
     const floorKeys = Object.keys(tiles).sort((a, b) => Number(a) - Number(b));
 
     floorKeys.forEach((zKey, floorIndex) => {
@@ -131,6 +145,22 @@ function formatTileRefs(refs: MapDocument['tileRefs'], indent: string): string {
         .join('\n')}`;
 }
 
+function formatLayers(layers: NonNullable<MapDocument['layers']>, indent: string): string[] {
+    const lines: string[] = [`${indent}"layers": {`];
+    const sections: string[] = [];
+
+    if (layers.grass && Object.keys(layers.grass).length > 0) {
+        sections.push(formatTilesByFloor(layers.grass, `${indent}  `, 'grass').join('\n'));
+    }
+    if (layers.border && Object.keys(layers.border).length > 0) {
+        sections.push(formatTilesByFloor(layers.border, `${indent}  `, 'border').join('\n'));
+    }
+
+    lines.push(sections.join(',\n'));
+    lines.push(`${indent}}`);
+    return lines;
+}
+
 /** JSON legível para humanos — compacto em KB, fácil de inspecionar no Git. */
 export function formatMapDocumentJson(doc: MapDocument): string {
     const view = buildMapDocumentExportView(doc);
@@ -163,6 +193,10 @@ export function formatMapDocumentJson(doc: MapDocument): string {
 
     if (view.tiles && typeof view.tiles === 'object' && Object.keys(view.tiles).length > 0) {
         sections.push(formatTilesByFloor(view.tiles as Record<string, MapTileEntry[]>, '  ').join('\n'));
+    }
+
+    if (view.layers && typeof view.layers === 'object') {
+        sections.push(formatLayers(view.layers as NonNullable<MapDocument['layers']>, '  ').join('\n'));
     }
 
     const tailKeys = ['metadata', 'houses', 'spawns', 'portals'] as const;

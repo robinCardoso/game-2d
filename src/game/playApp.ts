@@ -32,6 +32,7 @@ import { SpeedBuffManager } from '../character/speedBuffs';
 import { resolveFullStepDuration } from '../character/characterMovement';
 import { loadMapFile } from '../engine/worldLoader';
 import { createEmptyLayerMap, getLayerCell, type LayerMap } from '../engine/mapPaintLayers';
+import { collectBorderDrawTileIds } from '../engine/autoBorderEngine';
 import { MAP_REGISTRY } from '../engine/mapRegistry';
 import type { PortalData } from '../engine/types';
 import {
@@ -354,7 +355,24 @@ function draw(): void {
                 };
                 drawLayerTile(worldMap[z]?.[y]?.[x]);
                 drawLayerTile(getLayerCell(grassOverlayMap, z, x, y));
-                drawLayerTile(getLayerCell(borderOverlayMap, z, x, y));
+                const grassTid = getLayerCell(grassOverlayMap, z, x, y);
+                if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
+                    for (const borderTid of collectBorderDrawTileIds(
+                        {
+                            worldMap,
+                            grassOverlay: grassOverlayMap,
+                            borderOverlay: borderOverlayMap,
+                            registry: TILE_TYPES,
+                            fillTerrain: 'grass',
+                            borderSetId: 'grass_edges',
+                        },
+                        z,
+                        x,
+                        y
+                    )) {
+                        drawLayerTile(borderTid);
+                    }
+                }
                 const portal = worldPortals.find((p) => p.tileX === x && p.tileY === y && p.tileZ === z);
                 if (portal && z === player.worldZ) {
                     const pulse = (Math.sin(Date.now() / 400) + 1) / 2;

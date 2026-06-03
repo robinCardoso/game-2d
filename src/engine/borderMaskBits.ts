@@ -15,6 +15,9 @@ export const BORDER_MASK_SE = 32;
 export const BORDER_MASK_SW = 64;
 export const BORDER_MASK_NW = 128;
 
+export const BORDER_MASK_W_E = BORDER_MASK_W | BORDER_MASK_E;
+export const BORDER_MASK_N_S = BORDER_MASK_N | BORDER_MASK_S;
+
 export const BORDER_CARDINAL_MASKS = [1, 2, 4, 8] as const;
 /** Grama em dois lados perpendiculares da pedra (quina interna em L). */
 export const BORDER_INNER_CORNER_MASKS = [3, 6, 9, 12] as const;
@@ -75,6 +78,7 @@ const DIAGONAL_RESOLVE_ORDER = [
 
 /**
  * Escolhe tile disponível: máscara exata → cantos internos (3/6/9/12) → um cardinal → diagonal.
+ * Corredor O+E / N+S: persiste um tile (O ou N); o render desenha os dois filetes.
  */
 export function resolveBorderMaskForRegistry(
     rawMask: number,
@@ -82,6 +86,42 @@ export function resolveBorderMaskForRegistry(
 ): number {
     if (rawMask <= 0) return 0;
     if (availableMasks.has(rawMask)) return rawMask;
+
+    if (rawMask === BORDER_MASK_W_E) {
+        if (availableMasks.has(BORDER_MASK_W)) return BORDER_MASK_W;
+        if (availableMasks.has(BORDER_MASK_E)) return BORDER_MASK_E;
+        return 0;
+    }
+    if (rawMask === BORDER_MASK_N_S) {
+        if (availableMasks.has(BORDER_MASK_N)) return BORDER_MASK_N;
+        if (availableMasks.has(BORDER_MASK_S)) return BORDER_MASK_S;
+        return 0;
+    }
+
+    const swSe = BORDER_MASK_SW | BORDER_MASK_SE;
+    const nwNe = BORDER_MASK_NW | BORDER_MASK_NE;
+    const nwSw = BORDER_MASK_NW | BORDER_MASK_SW;
+    const neSe = BORDER_MASK_NE | BORDER_MASK_SE;
+    if (rawMask === swSe) {
+        if (availableMasks.has(BORDER_MASK_SE)) return BORDER_MASK_SE;
+        if (availableMasks.has(BORDER_MASK_SW)) return BORDER_MASK_SW;
+        return 0;
+    }
+    if (rawMask === nwNe) {
+        if (availableMasks.has(BORDER_MASK_NE)) return BORDER_MASK_NE;
+        if (availableMasks.has(BORDER_MASK_NW)) return BORDER_MASK_NW;
+        return 0;
+    }
+    if (rawMask === nwSw) {
+        if (availableMasks.has(BORDER_MASK_SW)) return BORDER_MASK_SW;
+        if (availableMasks.has(BORDER_MASK_NW)) return BORDER_MASK_NW;
+        return 0;
+    }
+    if (rawMask === neSe) {
+        if (availableMasks.has(BORDER_MASK_SE)) return BORDER_MASK_SE;
+        if (availableMasks.has(BORDER_MASK_NE)) return BORDER_MASK_NE;
+        return 0;
+    }
 
     for (const combined of INNER_CORNER_RESOLVE_ORDER) {
         if ((rawMask & combined) === combined && availableMasks.has(combined)) {

@@ -2,6 +2,15 @@ import type { LayerMap } from './mapPaintLayers';
 import { clearLayerCell, getLayerCell, setLayerCell } from './mapPaintLayers';
 import {
     computeBorderMaskFromGrassNeighbors as computeMaskBits,
+    BORDER_INNER_CORNER_MASKS,
+    BORDER_MASK_E,
+    BORDER_MASK_N,
+    BORDER_MASK_NE,
+    BORDER_MASK_NW,
+    BORDER_MASK_S,
+    BORDER_MASK_SE,
+    BORDER_MASK_SW,
+    BORDER_MASK_W,
     isSupportedBorderMask,
     resolveBorderMaskForRegistry,
 } from './borderMaskBits';
@@ -97,6 +106,198 @@ export function buildBorderMaskTileIndex(
     return index;
 }
 
+interface GrassNeighbors {
+    n: boolean;
+    e: boolean;
+    s: boolean;
+    w: boolean;
+    ne: boolean;
+    se: boolean;
+    sw: boolean;
+    nw: boolean;
+}
+
+function readGrassNeighbors(
+    ctx: Pick<AutoBorderContext, 'worldMap' | 'grassOverlay' | 'registry' | 'fillTerrain'>,
+    z: number,
+    x: number,
+    y: number
+): GrassNeighbors {
+    return {
+        n: cellHasGrass(ctx, z, x, y - 1),
+        e: cellHasGrass(ctx, z, x + 1, y),
+        s: cellHasGrass(ctx, z, x, y + 1),
+        w: cellHasGrass(ctx, z, x - 1, y),
+        ne: cellHasGrass(ctx, z, x + 1, y - 1),
+        se: cellHasGrass(ctx, z, x + 1, y + 1),
+        sw: cellHasGrass(ctx, z, x - 1, y + 1),
+        nw: cellHasGrass(ctx, z, x - 1, y - 1),
+    };
+}
+
+function cardinalFromNeighbors(g: GrassNeighbors): number {
+    let cardinal = 0;
+    if (g.n) cardinal |= BORDER_MASK_N;
+    if (g.e) cardinal |= BORDER_MASK_E;
+    if (g.s) cardinal |= BORDER_MASK_S;
+    if (g.w) cardinal |= BORDER_MASK_W;
+    return cardinal;
+}
+
+const INNER_DECOMPOSE_ORDER = [6, 12, 3, 9] as const;
+const ALL_CARDINALS = BORDER_MASK_N | BORDER_MASK_E | BORDER_MASK_S | BORDER_MASK_W;
+
+/** Decompõe bits cardinais em sprites desenháveis (quinas L, filetes, cruz central). */
+function decomposeCardinalDrawMasks(cardinal: number): number[] {
+    if (cardinal === 0) return [];
+
+    if (cardinal === ALL_CARDINALS) {
+        return [...BORDER_INNER_CORNER_MASKS];
+    }
+    if (cardinal === (BORDER_MASK_W | BORDER_MASK_E)) {
+        return [BORDER_MASK_W, BORDER_MASK_E];
+    }
+    if (cardinal === (BORDER_MASK_N | BORDER_MASK_S)) {
+        return [BORDER_MASK_N, BORDER_MASK_S];
+    }
+    if (BORDER_INNER_CORNER_MASKS.includes(cardinal as (typeof BORDER_INNER_CORNER_MASKS)[number])) {
+        return [cardinal];
+    }
+
+    const masks: number[] = [];
+    let remaining = cardinal;
+    for (const inner of INNER_DECOMPOSE_ORDER) {
+        if ((remaining & inner) === inner) {
+            masks.push(inner);
+            remaining &= ~inner;
+        }
+    }
+    for (const bit of [BORDER_MASK_N, BORDER_MASK_E, BORDER_MASK_S, BORDER_MASK_W]) {
+        if (remaining & bit) masks.push(bit);
+    }
+    return masks;
+}
+
+/** Pontas diagonais quando não há vizinho cardinal de grama. */
+function collectPureDiagonalDrawMasks(g: GrassNeighbors): number[] {
+    if (g.n || g.e || g.s || g.w) return [];
+
+    const masks: number[] = [];
+    const push = (mask: number) => {
+        if (!masks.includes(mask)) masks.push(mask);
+    };
+
+    if (g.sw && g.se) {
+        push(BORDER_MASK_SW);
+        push(BORDER_MASK_SE);
+        return masks;
+    }
+    if (g.nw && g.ne) {
+        push(BORDER_MASK_NW);
+        push(BORDER_MASK_NE);
+        return masks;
+    }
+    if (g.nw && g.sw) {
+        push(BORDER_MASK_NW);
+        push(BORDER_MASK_SW);
+        return masks;
+    }
+    if (g.ne && g.se) {
+        push(BORDER_MASK_NE);
+        push(BORDER_MASK_SE);
+        return masks;
+    }
+
+    if (g.ne) push(BORDER_MASK_NE);
+    if (g.se) push(BORDER_MASK_SE);
+    if (g.sw) push(BORDER_MASK_SW);
+    if (g.nw) push(BORDER_MASK_NW);
+    return masks;
+}
+
+/** Pontas diagonais extras quando já há filete cardinal (ex.: braço da cruz). */
+function collectDiagonalTipMasksWithCardinals(g: GrassNeighbors): number[] {
+    const masks: number[] = [];
+    const push = (mask: number) => {
+        if (!masks.includes(mask)) masks.push(mask);
+    };
+    if (!g.n && !g.e && g.ne) push(BORDER_MASK_NE);
+    if (!g.s && !g.e && g.se) push(BORDER_MASK_SE);
+    if (!g.s && !g.w && g.sw) push(BORDER_MASK_SW);
+    if (!g.n && !g.w && g.nw) push(BORDER_MASK_NW);
+    return masks;
+}
+
+/**
+ * Máscaras de borda a desenhar numa célula vazia/chão.
+ * Suporta multi-sprite: cruz (+), vãos, quinas L e cantos diagonais.
+ */
+export function collectBorderDrawMasks(
+    ctx: Pick<AutoBorderContext, 'worldMap' | 'grassOverlay' | 'registry' | 'fillTerrain'>,
+    z: number,
+    x: number,
+    y: number
+): number[] {
+    if (cellHasGrass(ctx, z, x, y)) return [];
+
+    const g = readGrassNeighbors(ctx, z, x, y);
+    const cardinal = cardinalFromNeighbors(g);
+
+    if (cardinal === 0) {
+        return collectPureDiagonalDrawMasks(g);
+    }
+
+    const masks: number[] = [];
+    const pushAll = (list: number[]) => {
+        for (const mask of list) {
+            if (!masks.includes(mask)) masks.push(mask);
+        }
+    };
+
+    pushAll(decomposeCardinalDrawMasks(cardinal));
+    pushAll(collectDiagonalTipMasksWithCardinals(g));
+    return masks;
+}
+
+function resolveDrawMaskForRegistry(
+    mask: number,
+    availableMasks: ReadonlySet<number>
+): number {
+    if (availableMasks.has(mask)) return mask;
+    return resolveBorderMaskForRegistry(mask, availableMasks);
+}
+
+/** Tile ids de borda a desenhar (multi-sprite por célula quando necessário). */
+export function collectBorderDrawTileIds(
+    ctx: Pick<
+        AutoBorderContext,
+        'worldMap' | 'grassOverlay' | 'borderOverlay' | 'registry' | 'fillTerrain' | 'borderSetId'
+    >,
+    z: number,
+    x: number,
+    y: number
+): number[] {
+    if (cellHasGrass(ctx, z, x, y)) return [];
+
+    const maskIndex = buildBorderMaskTileIndex(ctx.registry, ctx.borderSetId);
+    const availableMasks = new Set(maskIndex.keys());
+    const ids: number[] = [];
+
+    for (const rawMask of collectBorderDrawMasks(ctx, z, x, y)) {
+        const resolved = resolveDrawMaskForRegistry(rawMask, availableMasks);
+        if (resolved === 0) continue;
+        const tid = maskIndex.get(resolved);
+        if (tid !== undefined && !ids.includes(tid)) ids.push(tid);
+    }
+
+    if (ids.length === 0) {
+        const stored = getLayerCell(ctx.borderOverlay, z, x, y);
+        if (stored !== EMPTY_TILE_ID) ids.push(stored);
+    }
+
+    return ids;
+}
+
 export function recalculateAutoBorderCell(
     ctx: AutoBorderContext,
     z: number,
@@ -108,18 +309,25 @@ export function recalculateAutoBorderCell(
         clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
         return;
     }
-    const rawMask = computeBorderMaskFromGrassNeighbors(ctx, z, x, y);
-    if (rawMask === 0) {
-        clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
-        return;
-    }
+
     const availableMasks = new Set(maskIndex.keys());
-    const mask = resolveBorderMaskForRegistry(rawMask, availableMasks);
-    if (mask === 0) {
+    const drawMasks = collectBorderDrawMasks(ctx, z, x, y);
+    if (drawMasks.length === 0) {
         clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
         return;
     }
-    const tileId = maskIndex.get(mask);
+
+    let tileId: number | undefined;
+    for (const rawMask of drawMasks) {
+        const resolved = resolveDrawMaskForRegistry(rawMask, availableMasks);
+        if (resolved === 0) continue;
+        const candidate = maskIndex.get(resolved);
+        if (candidate !== undefined) {
+            tileId = candidate;
+            break;
+        }
+    }
+
     if (tileId === undefined) {
         clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
         return;
@@ -138,7 +346,7 @@ export function recalculateAutoBorderRegion(
     const maskIndex = buildBorderMaskTileIndex(ctx.registry, ctx.borderSetId);
     if (maskIndex.size === 0) return;
 
-    /** Halo 2: pedra a 1 célula + cantos diagonais da área pintada. */
+    /** Halo 2: filetes a até 2 células da área alterada (perímetro externo). */
     const halo = 2;
     const x0 = Math.max(0, minX - halo);
     const y0 = Math.max(0, minY - halo);
@@ -147,6 +355,10 @@ export function recalculateAutoBorderRegion(
 
     for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
+            if (cellHasGrass(ctx, z, x, y)) {
+                clearLayerCell(ctx.borderOverlay, z, x, y, ctx.mapSize);
+                continue;
+            }
             recalculateAutoBorderCell(ctx, z, x, y, maskIndex);
         }
     }

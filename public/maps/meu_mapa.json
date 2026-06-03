@@ -2,7 +2,7 @@
   "$schema": "./map.schema.json",
   "format": "game-2d/map-sparse-v1",
   "version": 1,
-  "name": "meu mapa",
+  "name": "Meu mapa",
   "mapId": "meu_mapa",
   "size": 256,
   "tileSize": 32,
@@ -75,28 +75,83 @@
       "category": "border",
       "walkable": true
     },
-    "25": {
-      "id": 25,
-      "name": "grama_20_var_variants · 6",
-      "ref": "grama_20_var_variants#5",
+    "22": {
+      "id": 22,
+      "name": "grama_20_var_variants · 3",
+      "ref": "grama_20_var_variants#2",
       "category": "ground",
       "variantGroup": "grass",
       "walkable": true,
-      "variantIndex": 5
+      "variantIndex": 2
     },
-    "31": {
-      "id": 31,
-      "name": "grama_20_var_variants · 12",
-      "ref": "grama_20_var_variants#11",
+    "29": {
+      "id": 29,
+      "name": "grama_20_var_variants · 10",
+      "ref": "grama_20_var_variants#9",
       "category": "ground",
       "variantGroup": "grass",
       "walkable": true,
-      "variantIndex": 11
+      "variantIndex": 9
+    },
+    "37": {
+      "id": 37,
+      "name": "grama_20_var_variants · 18",
+      "ref": "grama_20_var_variants#17",
+      "category": "ground",
+      "variantGroup": "grass",
+      "walkable": true,
+      "variantIndex": 17
+    },
+    "38": {
+      "id": 38,
+      "name": "grama_20_var_variants · 19",
+      "ref": "grama_20_var_variants#18",
+      "category": "ground",
+      "variantGroup": "grass",
+      "walkable": true,
+      "variantIndex": 18
     }
   },
   "spawn": {
     "x": 50,
     "y": 50,
     "z": 0
+  },
+  "layers": {
+    "grass": {
+      "0": [
+        { "x": 44, "y": 46, "id": 22, "ref": "grama_20_var_variants#2" },
+        { "x": 43, "y": 48, "id": 38, "ref": "grama_20_var_variants#18" },
+        { "x": 45, "y": 48, "id": 37, "ref": "grama_20_var_variants#17" },
+        { "x": 44, "y": 50, "id": 29, "ref": "grama_20_var_variants#9" }
+      ]
+    },
+    "border": {
+      "0": [
+        { "x": 43, "y": 45, "id": 13, "ref": "grass_edges_mask_32" },
+        { "x": 44, "y": 45, "id": 14, "ref": "grass_edges_mask_4" },
+        { "x": 45, "y": 45, "id": 16, "ref": "grass_edges_mask_64" },
+        { "x": 43, "y": 46, "id": 11, "ref": "grass_edges_mask_2" },
+        { "x": 45, "y": 46, "id": 17, "ref": "grass_edges_mask_8" },
+        { "x": 42, "y": 47, "id": 13, "ref": "grass_edges_mask_32" },
+        { "x": 43, "y": 47, "id": 14, "ref": "grass_edges_mask_4" },
+        { "x": 44, "y": 47, "id": 7, "ref": "grass_edges_mask_1" },
+        { "x": 45, "y": 47, "id": 14, "ref": "grass_edges_mask_4" },
+        { "x": 46, "y": 47, "id": 16, "ref": "grass_edges_mask_64" },
+        { "x": 42, "y": 48, "id": 11, "ref": "grass_edges_mask_2" },
+        { "x": 44, "y": 48, "id": 17, "ref": "grass_edges_mask_8" },
+        { "x": 46, "y": 48, "id": 17, "ref": "grass_edges_mask_8" },
+        { "x": 42, "y": 49, "id": 10, "ref": "grass_edges_mask_16" },
+        { "x": 43, "y": 49, "id": 7, "ref": "grass_edges_mask_1" },
+        { "x": 44, "y": 49, "id": 14, "ref": "grass_edges_mask_4" },
+        { "x": 45, "y": 49, "id": 7, "ref": "grass_edges_mask_1" },
+        { "x": 46, "y": 49, "id": 9, "ref": "grass_edges_mask_128" },
+        { "x": 43, "y": 50, "id": 11, "ref": "grass_edges_mask_2" },
+        { "x": 45, "y": 50, "id": 17, "ref": "grass_edges_mask_8" },
+        { "x": 43, "y": 51, "id": 10, "ref": "grass_edges_mask_16" },
+        { "x": 44, "y": 51, "id": 7, "ref": "grass_edges_mask_1" },
+        { "x": 45, "y": 51, "id": 9, "ref": "grass_edges_mask_128" }
+      ]
+    }
   }
 }
