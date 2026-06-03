@@ -128,9 +128,7 @@ export function calibrationResultToBatchGrid(
 
 function resolveStripBaseName(rawPrefix: string, variantGroup: string): string {
     let base = sanitizeNamePrefix(rawPrefix)
-        .replace(/^\d+-/, '')
-        .replace(/-?\d+$/, '')
-        .replace(/_variants$/, '');
+        .replace(/_variants$/, ''); // Apenas remove o sufixo _variants se já houver
     if (!base || /^\d+$/.test(base)) {
         base = sanitizeVariantGroup(variantGroup) || 'tile';
     }
@@ -518,6 +516,17 @@ export function openMapSpriteBatchExportModal(
         scope === 'selected' ? `Exportar 1 sprite (${total} var.)` : `Exportar ${total} PNGs`;
 
     confirmBtn.onclick = async () => {
+        if (!prefixInput.value.trim()) {
+            toast.error('O Prefixo do Nome é obrigatório.');
+            prefixInput.focus();
+            return;
+        }
+        if (!categoryInput.value.trim()) {
+            toast.error('A Subpasta (Categoria) é obrigatória.');
+            categoryInput.focus();
+            return;
+        }
+
         if (total < 1) {
             toast.error('Nenhum frame para exportar.');
             return;

@@ -525,11 +525,15 @@ export function openCharacterCalibrator(
                     : `${count} frame${count === 1 ? '' : 's'} selecionado${count === 1 ? '' : 's'}`;
         }
         if (calBatchExportSelectedBtn) {
+            calBatchExportSelectedBtn.style.display = mapMultiSelectMode ? '' : 'none';
             calBatchExportSelectedBtn.disabled = count < 1;
             calBatchExportSelectedBtn.textContent =
                 count > 0
                     ? `✅ Exportar selecionados (${count})`
                     : '✅ Exportar selecionados';
+        }
+        if (confirmBtn && !isBorderSetMode) {
+            confirmBtn.style.display = mapMultiSelectMode ? 'none' : '';
         }
         if (calMapMultiSelectTools) {
             calMapMultiSelectTools.classList.toggle('is-visible', mapMultiSelectMode);

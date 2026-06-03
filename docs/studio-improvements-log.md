@@ -20,6 +20,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Save sem camadas** | JSON só tinha `tiles` + `spawn` | `formatMapDocumentJson` inclui `layers.grass` / `layers.border` |
 | **Auto-borda visual** | Filetes errados, cantos L, cruz (+) | `borderMaskBits.ts` + `collectBorderDrawMasks()` multi-sprite |
 | **CPU alto (Studio)** | Bordas recalculadas todo frame; minimap 256×256×60 | Cache de draw, culling viewport, minimap lazy, 30 FPS idle |
+| **UX de Exportação** | Perda de dados (stripping), botões redundantes, campos vazios | `resolveStripBaseName` ajustado, inputs obrigatórios, botões contextuais no calibrador |
 
 ---
 
@@ -258,7 +259,31 @@ Desligar: `localStorage.removeItem('debug.perf')` (idem para as outras).
 
 ---
 
-## 8. Testes manuais de regressão
+## 8. UX de Exportação de Sprites (2026-06-03)
+
+Sessão dedicada à resolução de problemas de usabilidade que causavam perda de dados e sobrescrita indevida de arquivos durante a calibração e exportação em lote de sprites de mapa.
+
+### 8.1 Preservação do Prefixo do Nome
+**Arquivo:** `src/editor/mapSpriteBatchExport.ts`
+
+- A função `resolveStripBaseName` foi ajustada para parar de remover agressivamente números do início e do final do prefixo do sprite (ex: `03-ground-pedra`).
+- Isso evita que o sistema reverta o prefixo para valores padrão genéricos (como `ground_pedra`), o que levava à criação de sprites duplicados (ex: `ground_pedra_01.png` apagando outro sprite existente). O prefixo digitado no painel principal agora é passado integralmente para o modal de exportação.
+
+### 8.2 Validação de Campos Obrigatórios
+**Arquivo:** `src/editor/mapSpriteBatchExport.ts`
+
+- Os campos **Prefixo do Nome** (`prefixInput`) e **Subpasta/Categoria** (`categoryInput`) tornaram-se obrigatórios na exportação em lote.
+- Foi implementada uma validação ao clicar em "Confirmar" que bloqueia a exportação e notifica o usuário via *toast*, focando o campo vazio, evitando que sprites sejam gerados em caminhos incorretos.
+
+### 8.3 Redundância Visual e Lógica de Botões
+**Arquivo:** `src/editor/characterCalibratorModal.ts`
+
+- **Modo Seleção Múltipla:** O botão genérico "Confirmar" foi ocultado na UI, deixando apenas o botão "✅ Exportar selecionados" visível. Isso força o fluxo direto para a exportação e evita confusão.
+- **Modo Seleção Única:** O botão "✅ Exportar selecionados" foi ocultado, deixando clara a intenção do botão "Confirmar" de retornar a seleção única (1 frame) para a interface do painel principal para ajustes manuais antes do salvamento em lote.
+
+---
+
+## 9. Testes manuais de regressão
 
 ### Sprites e mapas (base)
 

@@ -1236,6 +1236,16 @@ export function initMapSpriteEditor() {
         requestAnimationFrame(drawPreviewLoop);
 
         if (!previewCtx) return;
+        
+        // Otimização: Não renderiza se o painel estiver oculto ou se modais estiverem por cima
+        if (!previewCanvas.offsetParent) return;
+        
+        const calibratorModal = document.getElementById('characterCalibratorModal');
+        if (calibratorModal?.classList.contains('is-open')) return;
+        
+        const exportModal = document.getElementById('mapSpriteBatchExportModal');
+        if (exportModal?.classList.contains('is-open')) return;
+
         previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
 
         if (!isImageLoaded || !processedImage) {
@@ -1252,6 +1262,9 @@ export function initMapSpriteEditor() {
         const fh = parseInt(frameHeightInput.value, 10) || tileSize;
         const ox = parseInt(offsetXInput.value) || 0;
         const oy = parseInt(offsetYInput.value) || 0;
+
+        // Suavização desativada para manter nitidez
+        previewCtx.imageSmoothingEnabled = false;
 
         previewCtx.drawImage(
             processedImage,
