@@ -32,7 +32,7 @@ import { SpeedBuffManager } from '../character/speedBuffs';
 import { resolveFullStepDuration } from '../character/characterMovement';
 import { loadMapFile } from '../engine/worldLoader';
 import { createEmptyLayerMap, getLayerCell, type LayerMap } from '../engine/mapPaintLayers';
-import { collectBorderDrawTileIds } from '../engine/autoBorderEngine';
+import { collectBorderDrawTileIdsCached, buildBorderMaskTileIndex, invalidateBorderDrawCache } from '../engine/autoBorderEngine';
 import { MAP_REGISTRY } from '../engine/mapRegistry';
 import type { PortalData } from '../engine/types';
 import {
@@ -49,6 +49,8 @@ import { createEnterTicket } from '../shared/enterTicket';
 import type { CharacterRow } from '../shared/types';
 
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
+const PLAY_BORDER_SET_ID = 'grass_edges';
+const PLAY_FILL_TERRAIN = 'grass';
 let TILE_TYPES = buildTileRegistry();
 let activeMapSize: number = ENGINE_CONFIG.MAP_SIZE;
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
@@ -185,6 +187,7 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     respawnEntities();
     resetPortalTriggerState();
     updateActiveMapHud();
+    invalidateBorderDrawCache();
 }
 
 async function transitionToMap(
@@ -321,9 +324,26 @@ function update(): void {
     gameNet?.syncPositionIfChanged();
 }
 
+function getPlayBorderDrawContext() {
+    return {
+        worldMap,
+        grassOverlay: grassOverlayMap,
+        borderOverlay: borderOverlayMap,
+        registry: TILE_TYPES,
+        fillTerrain: PLAY_FILL_TERRAIN,
+        borderSetId: PLAY_BORDER_SET_ID,
+    };
+}
+
 function draw(): void {
     ctx.fillStyle = '#0a0b0e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const borderDrawCtx = getPlayBorderDrawContext();
+    const borderMaskIndex = buildBorderMaskTileIndex(
+        borderDrawCtx.registry,
+        borderDrawCtx.borderSetId
+    );
 
     getAllFloorZs().forEach((z) => {
         const isAbove = z > player.worldZ;
@@ -357,18 +377,12 @@ function draw(): void {
                 drawLayerTile(getLayerCell(grassOverlayMap, z, x, y));
                 const grassTid = getLayerCell(grassOverlayMap, z, x, y);
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
-                    for (const borderTid of collectBorderDrawTileIds(
-                        {
-                            worldMap,
-                            grassOverlay: grassOverlayMap,
-                            borderOverlay: borderOverlayMap,
-                            registry: TILE_TYPES,
-                            fillTerrain: 'grass',
-                            borderSetId: 'grass_edges',
-                        },
+                    for (const borderTid of collectBorderDrawTileIdsCached(
+                        borderDrawCtx,
                         z,
                         x,
-                        y
+                        y,
+                        borderMaskIndex
                     )) {
                         drawLayerTile(borderTid);
                     }

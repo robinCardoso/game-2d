@@ -275,18 +275,19 @@ export function collectBorderDrawTileIds(
     >,
     z: number,
     x: number,
-    y: number
+    y: number,
+    maskIndex?: Map<number, number>
 ): number[] {
     if (cellHasGrass(ctx, z, x, y)) return [];
 
-    const maskIndex = buildBorderMaskTileIndex(ctx.registry, ctx.borderSetId);
-    const availableMasks = new Set(maskIndex.keys());
+    const index = maskIndex ?? buildBorderMaskTileIndex(ctx.registry, ctx.borderSetId);
+    const availableMasks = new Set(index.keys());
     const ids: number[] = [];
 
     for (const rawMask of collectBorderDrawMasks(ctx, z, x, y)) {
         const resolved = resolveDrawMaskForRegistry(rawMask, availableMasks);
         if (resolved === 0) continue;
-        const tid = maskIndex.get(resolved);
+        const tid = index.get(resolved);
         if (tid !== undefined && !ids.includes(tid)) ids.push(tid);
     }
 
@@ -295,6 +296,52 @@ export function collectBorderDrawTileIds(
         if (stored !== EMPTY_TILE_ID) ids.push(stored);
     }
 
+    return ids;
+}
+
+const borderDrawTileIdsCache = new Map<string, readonly number[]>();
+
+/** Limpa cache de render de bordas (mapa carregado, undo, reload de tiles). */
+export function invalidateBorderDrawCache(): void {
+    borderDrawTileIdsCache.clear();
+}
+
+/** Invalida células afetadas após recálculo regional (vizinhos incluídos via halo). */
+export function invalidateBorderDrawCacheRegion(
+    z: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    halo = 2
+): void {
+    const x0 = Math.max(0, minX - halo);
+    const y0 = Math.max(0, minY - halo);
+    const x1 = maxX + halo;
+    const y1 = maxY + halo;
+    for (let y = y0; y <= y1; y++) {
+        for (let x = x0; x <= x1; x++) {
+            borderDrawTileIdsCache.delete(`${z}:${x}:${y}`);
+        }
+    }
+}
+
+/** Mesmo que collectBorderDrawTileIds, mas cacheia por célula até invalidação. */
+export function collectBorderDrawTileIdsCached(
+    ctx: Pick<
+        AutoBorderContext,
+        'worldMap' | 'grassOverlay' | 'borderOverlay' | 'registry' | 'fillTerrain' | 'borderSetId'
+    >,
+    z: number,
+    x: number,
+    y: number,
+    maskIndex?: Map<number, number>
+): readonly number[] {
+    const key = `${z}:${x}:${y}`;
+    const hit = borderDrawTileIdsCache.get(key);
+    if (hit !== undefined) return hit;
+    const ids = collectBorderDrawTileIds(ctx, z, x, y, maskIndex);
+    borderDrawTileIdsCache.set(key, ids);
     return ids;
 }
 
@@ -362,6 +409,8 @@ export function recalculateAutoBorderRegion(
             recalculateAutoBorderCell(ctx, z, x, y, maskIndex);
         }
     }
+
+    invalidateBorderDrawCacheRegion(z, x0, y0, x1, y1, 1);
 }
 
 export function recalculateAutoBorderFloor(ctx: AutoBorderContext, z: number): void {

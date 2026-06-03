@@ -24,7 +24,9 @@ import {
 } from './editor/mapSpriteEditor';
 import { initAutoBorderUi, onMapEditorTileSelectionChanged, getActiveBorderSet } from './editor/autoBorderUi';
 import {
-    collectBorderDrawTileIds,
+    collectBorderDrawTileIdsCached,
+    buildBorderMaskTileIndex,
+    invalidateBorderDrawCache,
     isGrassPaintSelection,
     recalculateAutoBorderFloor,
     recalculateAutoBorderRegion,
@@ -186,6 +188,16 @@ ctx.imageSmoothingEnabled = false;
 const minimapCanvas = document.getElementById('minimapCanvas') as HTMLCanvasElement;
 const mCtx = minimapCanvas.getContext('2d')!;
 mCtx.imageSmoothingEnabled = false;
+
+const MINIMAP_TILE_COLORS = ['#2d5a27', '#374151', '#1e3a8a', '#78350f', '#1f2937', '#064e3b', '#7f1d1d'];
+let minimapBackgroundDirty = true;
+let minimapLastFloor = -999;
+let minimapLastPlayerX = -1;
+let minimapLastPlayerY = -1;
+
+function markMinimapDirty(): void {
+    minimapBackgroundDirty = true;
+}
 const posXEl = document.getElementById('posX')!;
 const posYEl = document.getElementById('posY')!;
 const posZEl = document.getElementById('posZ')!;
@@ -302,6 +314,8 @@ function applyMapPaintSnapshot(snapshot: {
     worldMap = snapshot.base;
     grassOverlayMap = snapshot.grass;
     borderOverlayMap = snapshot.border;
+    invalidateBorderDrawCache();
+    markMinimapDirty();
 }
 
 function saveState() {
@@ -393,6 +407,7 @@ function setActiveMapSize(size: number): void {
     player.worldX = player.tileX * TILE_SIZE_SCREEN;
     player.worldY = player.tileY * TILE_SIZE_SCREEN;
     syncGridPlayerVisual(player, TILE_SIZE_SCREEN);
+    markMinimapDirty();
 }
 
 /** Stats persistentes — `character/movementSpeed.ts`. */
@@ -921,7 +936,9 @@ function updatePaintBrushPreviewFromEvent(e: MouseEvent): void {
         paintBrushPreview = null;
         return;
     }
-    paintBrushPreview = clientToMapTile(e);
+    const next = clientToMapTile(e);
+    if (next) markStudioActivity();
+    paintBrushPreview = next;
 }
 
 function buildAutoBorderContext(borderSetId: string, fillTerrain: string): AutoBorderContext {
@@ -936,7 +953,7 @@ function buildAutoBorderContext(borderSetId: string, fillTerrain: string): AutoB
     };
 }
 
-function getBorderDrawContext(): Parameters<typeof collectBorderDrawTileIds>[0] {
+function getBorderDrawContext(): Parameters<typeof collectBorderDrawTileIdsCached>[0] {
     const set = getActiveBorderSet();
     return {
         worldMap,
@@ -946,6 +963,40 @@ function getBorderDrawContext(): Parameters<typeof collectBorderDrawTileIds>[0] 
         fillTerrain: set?.fillTerrain ?? 'grass',
         borderSetId: set?.id ?? 'grass_edges',
     };
+}
+
+/** Acumula região de recálculo de borda durante um traço de pincel (mouseup consolida). */
+let pendingBorderRecalc: {
+    z: number;
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+} | null = null;
+
+function mergePendingBorderRecalc(
+    z: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number
+): void {
+    if (!pendingBorderRecalc || pendingBorderRecalc.z !== z) {
+        pendingBorderRecalc = { z, minX, minY, maxX, maxY };
+        return;
+    }
+    pendingBorderRecalc.minX = Math.min(pendingBorderRecalc.minX, minX);
+    pendingBorderRecalc.minY = Math.min(pendingBorderRecalc.minY, minY);
+    pendingBorderRecalc.maxX = Math.max(pendingBorderRecalc.maxX, maxX);
+    pendingBorderRecalc.maxY = Math.max(pendingBorderRecalc.maxY, maxY);
+}
+
+function flushPendingBorderRecalc(): void {
+    if (!pendingBorderRecalc) return;
+    const { z, minX, minY, maxX, maxY } = pendingBorderRecalc;
+    pendingBorderRecalc = null;
+    const expanded = expandAutoBorderRecalcBounds(z, minX, minY, maxX, maxY);
+    maybeRecalcAutoBorderAfterPaint(z, expanded.minX, expanded.minY, expanded.maxX, expanded.maxY);
 }
 
 function maybeRecalcAutoBorderAfterPaint(
@@ -1038,7 +1089,13 @@ function isMapSaveDebugEnabled(): boolean {
     }
 }
 
-function placeTileAt(z: number, x: number, y: number, selectedId: number): void {
+function placeTileAt(
+    z: number,
+    x: number,
+    y: number,
+    selectedId: number,
+    options: { deferBorderRecalc?: boolean } = {}
+): void {
     const paintId = resolvePaintSelectionId(selectedId);
     const resolvedId = resolvePaintTileId(paintId, TILE_TYPES);
     const set = getActiveBorderSet();
@@ -1081,6 +1138,7 @@ function placeTileAt(z: number, x: number, y: number, selectedId: number): void 
             worldMap[z][py][px] = resolvedId;
             clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
             clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+            if (z === player.worldZ) markMinimapDirty();
         }
 
         if (debugPaint) {
@@ -1101,13 +1159,23 @@ function placeTileAt(z: number, x: number, y: number, selectedId: number): void 
 
     if (useGrassOverlay) {
         const recalcBounds = expandAutoBorderRecalcBounds(z, minX, minY, maxX, maxY);
-        maybeRecalcAutoBorderAfterPaint(
-            z,
-            recalcBounds.minX,
-            recalcBounds.minY,
-            recalcBounds.maxX,
-            recalcBounds.maxY
-        );
+        if (options.deferBorderRecalc) {
+            mergePendingBorderRecalc(
+                z,
+                recalcBounds.minX,
+                recalcBounds.minY,
+                recalcBounds.maxX,
+                recalcBounds.maxY
+            );
+        } else {
+            maybeRecalcAutoBorderAfterPaint(
+                z,
+                recalcBounds.minX,
+                recalcBounds.minY,
+                recalcBounds.maxX,
+                recalcBounds.maxY
+            );
+        }
     }
 
     if (debugPaint && debugCells.length > 0) {
@@ -1123,7 +1191,12 @@ function placeTileAt(z: number, x: number, y: number, selectedId: number): void 
     }
 }
 
-function eraseTileAt(z: number, x: number, y: number): void {
+function eraseTileAt(
+    z: number,
+    x: number,
+    y: number,
+    options: { deferBorderRecalc?: boolean } = {}
+): void {
     const emptyId = ENGINE_CONFIG.EMPTY_TILE_ID;
     let minX = x;
     let minY = y;
@@ -1145,10 +1218,28 @@ function eraseTileAt(z: number, x: number, y: number): void {
         }
         worldMap[z][py][px] = emptyId;
         clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+        if (z === player.worldZ) markMinimapDirty();
     }
 
     if (touchedGrass && getActiveBorderSet()) {
-        maybeRecalcAutoBorderAfterPaint(z, minX, minY, maxX, maxY);
+        const recalcBounds = expandAutoBorderRecalcBounds(z, minX, minY, maxX, maxY);
+        if (options.deferBorderRecalc) {
+            mergePendingBorderRecalc(
+                z,
+                recalcBounds.minX,
+                recalcBounds.minY,
+                recalcBounds.maxX,
+                recalcBounds.maxY
+            );
+        } else {
+            maybeRecalcAutoBorderAfterPaint(
+                z,
+                recalcBounds.minX,
+                recalcBounds.minY,
+                recalcBounds.maxX,
+                recalcBounds.maxY
+            );
+        }
     }
 }
 
@@ -1298,6 +1389,8 @@ async function reloadTileRegistry(): Promise<void> {
         worldMap = ensureAllFloors(remapped.worldMap, activeMapSize);
         grassOverlayMap = remapped.grassOverlay ?? createEmptyLayerMap(activeMapSize);
         borderOverlayMap = remapped.borderOverlay ?? createEmptyLayerMap(activeMapSize);
+        invalidateBorderDrawCache();
+        markMinimapDirty();
     }
 
     for (const mismatch of takeVariantStripMismatches()) {
@@ -1348,8 +1441,10 @@ setBorderSetAfterSaveHandler(async () => {
 let startX = 0;
 let startY = 0;
 let previewOverlay: {type: string, x1: number, y1: number, x2: number, y2: number} | null = null;
+let lastPaintCellKey: string | null = null;
 
-function paint(e: MouseEvent) {
+function paint(e: MouseEvent, options: { deferBorderRecalc?: boolean } = {}) {
+    markStudioActivity();
     const rect = canvas.getBoundingClientRect();
     const zoom = camera.zoom || 1.0;
     const tx = Math.floor(((e.clientX - rect.left) / zoom + camera.x) / TILE_SIZE_SCREEN);
@@ -1419,9 +1514,15 @@ function paint(e: MouseEvent) {
                 mapEditorController.setTool('pencil');
             }
         } else if (currentTool === 'pencil') {
-            placeTileAt(editingFloor, tx, ty, selectedTileType);
+            const cellKey = `${editingFloor},${tx},${ty}`;
+            if (lastPaintCellKey === cellKey) return;
+            lastPaintCellKey = cellKey;
+            placeTileAt(editingFloor, tx, ty, selectedTileType, options);
         } else if (currentTool === 'eraser') {
-            eraseTileAt(editingFloor, tx, ty);
+            const cellKey = `${editingFloor},${tx},${ty}`;
+            if (lastPaintCellKey === cellKey) return;
+            lastPaintCellKey = cellKey;
+            eraseTileAt(editingFloor, tx, ty, options);
         } else if (currentTool === 'bucket') {
             const target = worldMap[editingFloor][ty][tx];
             const paintId = resolvePaintSelectionId(selectedTileType);
@@ -1470,6 +1571,7 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 canvas.addEventListener('mousedown', e => {
+    markStudioActivity();
     // Permite pintar ou arrastar o mapa APENAS quando o painel unificado de edição de mapa (map_editor) está ativo
     const activePanel = editorShell?.getActivePanel();
     const isMapEditPanelActive = activePanel === 'map_editor';
@@ -1493,6 +1595,7 @@ canvas.addEventListener('mousedown', e => {
 
         const onDragMove = (me: MouseEvent) => {
             if (!isDraggingMap) return;
+            markStudioActivity();
             const dx = me.clientX - dragStartX;
             const dy = me.clientY - dragStartY;
             camera.offsetX = initialCameraOffsetX - dx;
@@ -1551,14 +1654,18 @@ canvas.addEventListener('mousedown', e => {
         if (currentTool !== 'eyedropper') {
             saveState(); // Salva o estado antes de iniciar a pintura (Pencil, Bucket, Eraser)
         }
-        paint(e);
         if(currentTool === 'pencil' || currentTool === 'eraser') {
-            const onMove = (me: MouseEvent) => paint(me);
+            paint(e, { deferBorderRecalc: true });
+            const onMove = (me: MouseEvent) => paint(me, { deferBorderRecalc: true });
             const onStrokeEnd = () => {
+                lastPaintCellKey = null;
+                flushPendingBorderRecalc();
                 canvas.removeEventListener('mousemove', onMove);
             };
             canvas.addEventListener('mousemove', onMove);
             window.addEventListener('mouseup', onStrokeEnd, { once: true });
+        } else {
+            paint(e);
         }
     }
 });
@@ -1690,9 +1797,10 @@ function applyShape(type: string, x1: number, y1: number, x2: number, y2: number
     if (type === 'rectangle') {
         for (let y = minY; y <= maxY; y++) {
             for (let x = minX; x <= maxX; x++) {
-                placeTileAt(editingFloor, x, y, selectedTileType);
+                placeTileAt(editingFloor, x, y, selectedTileType, { deferBorderRecalc: true });
             }
         }
+        flushPendingBorderRecalc();
     } else if (type === 'line') {
         let dx = Math.abs(x2 - x1);
         let dy = Math.abs(y2 - y1);
@@ -1703,13 +1811,14 @@ function applyShape(type: string, x1: number, y1: number, x2: number, y2: number
         
         while (true) {
             if (cx >= 0 && cx < activeMapSize && cy >= 0 && cy < activeMapSize) {
-                placeTileAt(editingFloor, cx, cy, selectedTileType);
+                placeTileAt(editingFloor, cx, cy, selectedTileType, { deferBorderRecalc: true });
             }
             if (cx === x2 && cy === y2) break;
             let e2 = 2 * err;
             if (e2 > -dy) { err -= dy; cx += sx; }
             if (e2 < dx) { err += dx; cy += sy; }
         }
+        flushPendingBorderRecalc();
     }
 }
 
@@ -1726,6 +1835,7 @@ window.addEventListener('keydown', e => {
         return;
     }
 
+    markStudioActivity();
     const key = e.key.toLowerCase();
     keys[key] = true;
     
@@ -2011,6 +2121,8 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>) {
     updateHistoryButtons();
     resetPortalTriggerState();
     updateActiveMapHud();
+    invalidateBorderDrawCache();
+    markMinimapDirty();
 }
 
 function createBlankMap(entry: MapEntry) {
@@ -2306,6 +2418,30 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
     return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
 }
 
+function floorHasVisibleContentInView(
+    z: number,
+    startX: number,
+    endX: number,
+    startY: number,
+    endY: number
+): boolean {
+    if (z === player.worldZ || z === editingFloor) return true;
+    if (npcs.some((npc) => npc.worldZ === z)) return true;
+
+    const emptyId = ENGINE_CONFIG.EMPTY_TILE_ID;
+    for (let y = startY; y <= endY; y++) {
+        const row = worldMap[z]?.[y];
+        if (!row) continue;
+        for (let x = startX; x <= endX; x++) {
+            const base = row[x];
+            if (base !== emptyId && base !== -1) return true;
+            if (getLayerCell(grassOverlayMap, z, x, y) !== emptyId) return true;
+            if (getLayerCell(borderOverlayMap, z, x, y) !== emptyId) return true;
+        }
+    }
+    return false;
+}
+
 function draw() {
     ctx.fillStyle = '#0a0b0e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2319,18 +2455,26 @@ function draw() {
     const camX = Math.round(camera.x * zoom) / zoom;
     const camY = Math.round(camera.y * zoom) / zoom;
 
+    const borderDrawCtx = getBorderDrawContext();
+    const borderMaskIndex = buildBorderMaskTileIndex(
+        borderDrawCtx.registry,
+        borderDrawCtx.borderSetId
+    );
+
+    const { startX, endX, startY, endY } = computeViewportTileBounds(camX, camY, zoom);
+    const tilesPerFloor = Math.max(0, endX - startX + 1) * Math.max(0, endY - startY + 1);
+    let floorsDrawn = 0;
+
     getAllFloorZs().forEach(z => {
+        if (!floorHasVisibleContentInView(z, startX, endX, startY, endY)) return;
+        floorsDrawn++;
+
         const isAbove = z > player.worldZ;
         let playerUnder = false;
         if (isAbove) {
             if (worldMap[z][player.tileY] && worldMap[z][player.tileY][player.tileX] !== -1) playerUnder = true;
         }
         ctx.globalAlpha = (isAbove && playerUnder) ? 0.3 : 1.0;
-
-        const startX = Math.max(0, Math.floor(camX / TILE_SIZE_SCREEN));
-        const endX = Math.min(activeMapSize - 1, Math.floor((camX + canvas.width / zoom) / TILE_SIZE_SCREEN));
-        const startY = Math.max(0, Math.floor(camY / TILE_SIZE_SCREEN));
-        const endY = Math.min(activeMapSize - 1, Math.floor((camY + canvas.height / zoom) / TILE_SIZE_SCREEN));
 
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
@@ -2353,7 +2497,13 @@ function draw() {
                 drawTileLayer(grassTid);
                 // Segurança visual: nunca desenhar borda por cima de célula com grama.
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
-                    for (const borderTid of collectBorderDrawTileIds(getBorderDrawContext(), z, x, y)) {
+                    for (const borderTid of collectBorderDrawTileIdsCached(
+                        borderDrawCtx,
+                        z,
+                        x,
+                        y,
+                        borderMaskIndex
+                    )) {
                         drawTileLayer(borderTid);
                     }
                 }
@@ -2582,41 +2732,188 @@ function draw() {
         }
     });
 
+    lastDrawViewportStats = {
+        tilesPerFloor,
+        floorsDrawn,
+        mapTileCount: activeMapSize * activeMapSize,
+        mapSize: activeMapSize,
+    };
+
     ctx.restore();
 }
 
 function drawMinimap() {
-    mCtx.fillStyle = '#000';
-    mCtx.fillRect(0, 0, 150, 150);
+    const floor = player.worldZ;
+    const px = player.tileX;
+    const py = player.tileY;
     const step = 150 / activeMapSize;
-    const floor = worldMap[player.worldZ];
-    for (let y = 0; y < activeMapSize; y++) {
-        for (let x = 0; x < activeMapSize; x++) {
-            if (floor[y][x] !== -1) {
-                const colors = ['#2d5a27', '#374151', '#1e3a8a', '#78350f', '#1f2937', '#064e3b', '#7f1d1d'];
-                mCtx.fillStyle = colors[floor[y][x]] || '#333';
-                mCtx.fillRect(x * step, y * step, step, step);
+
+    if (minimapBackgroundDirty || minimapLastFloor !== floor) {
+        mCtx.fillStyle = '#000';
+        mCtx.fillRect(0, 0, 150, 150);
+        const floorData = worldMap[floor];
+        if (floorData) {
+            for (let y = 0; y < activeMapSize; y++) {
+                for (let x = 0; x < activeMapSize; x++) {
+                    const tid = floorData[y][x];
+                    if (tid !== -1) {
+                        mCtx.fillStyle = MINIMAP_TILE_COLORS[tid] || '#333';
+                        mCtx.fillRect(x * step, y * step, step, step);
+                    }
+                }
             }
         }
+        minimapBackgroundDirty = false;
+        minimapLastFloor = floor;
+        minimapLastPlayerX = -1;
     }
+
+    if (px === minimapLastPlayerX && py === minimapLastPlayerY) return;
+
+    if (minimapLastPlayerX >= 0) {
+        const ox = minimapLastPlayerX;
+        const oy = minimapLastPlayerY;
+        const floorData = worldMap[floor];
+        const oldTid = floorData?.[oy]?.[ox];
+        mCtx.fillStyle =
+            oldTid !== undefined && oldTid !== -1
+                ? MINIMAP_TILE_COLORS[oldTid] || '#333'
+                : '#000';
+        mCtx.fillRect(ox * step, oy * step, step, step);
+    }
+
     mCtx.fillStyle = '#fff';
-    mCtx.fillRect(player.tileX * step, player.tileY * step, 2, 2);
+    mCtx.fillRect(px * step, py * step, Math.max(2, step), Math.max(2, step));
+    minimapLastPlayerX = px;
+    minimapLastPlayerY = py;
+}
+
+function isMovementDebugEnabled(): boolean {
+    if (!import.meta.env.DEV) return false;
+    try {
+        return localStorage.getItem('debug.movement') === '1';
+    } catch {
+        return false;
+    }
+}
+
+function isPerfDebugEnabled(): boolean {
+    if (!import.meta.env.DEV) return false;
+    try {
+        return localStorage.getItem('debug.perf') === '1';
+    } catch {
+        return false;
+    }
+}
+
+interface DrawViewportStats {
+    tilesPerFloor: number;
+    floorsDrawn: number;
+    mapTileCount: number;
+    mapSize: number;
+}
+
+let lastDrawViewportStats: DrawViewportStats | null = null;
+
+function computeViewportTileBounds(camX: number, camY: number, zoom: number) {
+    const startX = Math.max(0, Math.floor(camX / TILE_SIZE_SCREEN));
+    const endX = Math.min(
+        activeMapSize - 1,
+        Math.floor((camX + canvas.width / zoom) / TILE_SIZE_SCREEN)
+    );
+    const startY = Math.max(0, Math.floor(camY / TILE_SIZE_SCREEN));
+    const endY = Math.min(
+        activeMapSize - 1,
+        Math.floor((camY + canvas.height / zoom) / TILE_SIZE_SCREEN)
+    );
+    return { startX, endX, startY, endY };
 }
 
 let lastLogged = 0;
-function loop() {
+let perfFrameCount = 0;
+let perfDrawMs = 0;
+let perfLastReport = 0;
+
+/** Studio: 60 FPS ao interagir; 30 FPS após 2 s parado (Play mode não usa isto). */
+const STUDIO_IDLE_AFTER_MS = 2000;
+const STUDIO_FULL_FRAME_MS = 1000 / 60;
+const STUDIO_IDLE_FRAME_MS = 1000 / 30;
+
+let lastStudioActivityMs = performance.now();
+let lastStudioFrameTime = 0;
+
+function markStudioActivity(): void {
+    lastStudioActivityMs = performance.now();
+}
+
+function studioNeedsContinuousAnimation(): boolean {
+    if (activeMapEditorTab === 'portals' || activeMapEditorTab === 'spawns') return true;
+    if (isDraggingMap || isMiddleDragging || isSpacePressed) return true;
+    if (previewOverlay !== null) return true;
+    if (gridMovement.stepping) return true;
+    if (editingTileKey) return true;
+    if (activeCharacterController.currentState !== 'idle') return true;
+    for (const key of Object.keys(keys)) {
+        if (keys[key]) return true;
+    }
+    return false;
+}
+
+function getStudioFrameIntervalMs(now: number): number {
+    if (studioNeedsContinuousAnimation()) return STUDIO_FULL_FRAME_MS;
+    if (now - lastStudioActivityMs < STUDIO_IDLE_AFTER_MS) return STUDIO_FULL_FRAME_MS;
+    return STUDIO_IDLE_FRAME_MS;
+}
+
+function isStudioIdleFps(now: number = performance.now()): boolean {
+    return getStudioFrameIntervalMs(now) >= STUDIO_IDLE_FRAME_MS - 0.5;
+}
+
+function loop(now: number = performance.now()): void {
+    const interval = getStudioFrameIntervalMs(now);
+    if (now - lastStudioFrameTime < interval - 0.5) {
+        requestAnimationFrame(loop);
+        return;
+    }
+    lastStudioFrameTime = now;
+
+    const perfOn = isPerfDebugEnabled();
+    const t0 = perfOn ? performance.now() : 0;
+
     update();
+
+    const t1 = perfOn ? performance.now() : 0;
     draw();
+    const t2 = perfOn ? performance.now() : 0;
     drawMinimap();
-    
-    if (Date.now() - lastLogged > 2000) {
+    const t3 = perfOn ? performance.now() : 0;
+
+    if (perfOn) {
+        perfDrawMs += t2 - t1;
+        perfFrameCount++;
+        if (t3 - perfLastReport > 2000) {
+            const vp = lastDrawViewportStats;
+            const viewportLine = vp
+                ? `viewport ${vp.tilesPerFloor}/${vp.mapTileCount} tiles (${vp.floorsDrawn} floor${vp.floorsDrawn === 1 ? '' : 's'})`
+                : 'viewport ?/? tiles';
+            const fpsLine = isStudioIdleFps(t3) ? 'fps 30 (idle)' : 'fps 60';
+            console.log(
+                `[Perf] draw ${(perfDrawMs / perfFrameCount).toFixed(2)}ms/frame | ${viewportLine} | ${fpsLine} | update ${(t1 - t0).toFixed(2)}ms | minimap ${(t3 - t2).toFixed(2)}ms`
+            );
+            perfFrameCount = 0;
+            perfDrawMs = 0;
+            perfLastReport = t3;
+        }
+    }
+
+    if (isMovementDebugEnabled() && Date.now() - lastLogged > 2000) {
         const lx = player.tileX * TILE_SIZE_SCREEN;
         const ly = player.tileY * TILE_SIZE_SCREEN;
         console.log("PLAYER tile:", player.tileX, player.tileY, "visual:", player.worldX, player.worldY, "Z:", player.worldZ);
         console.log("IS WALKABLE AT TILE:", isWalkable(lx, ly, player.worldZ));
         lastLogged = Date.now();
     }
-    
+
     requestAnimationFrame(loop);
 }
 
@@ -2625,6 +2922,7 @@ function resize() {
     canvas.width = container.clientWidth;
     canvas.height = container.clientHeight;
     ctx.imageSmoothingEnabled = false;
+    markStudioActivity();
 }
 
 function initMapEditorTabSwitching() {
@@ -2644,6 +2942,7 @@ function initMapEditorTabSwitching() {
         });
 
         activeMapEditorTab = targetTab;
+        markStudioActivity();
 
         if (targetTab === 'spawns') {
             spawnEditorController?.syncToolButtons();
@@ -2679,6 +2978,7 @@ if (gameZoomSelect) {
         const val = parseFloat(gameZoomSelect.value);
         if (!Number.isNaN(val) && val > 0) {
             camera.zoom = val;
+            markStudioActivity();
             try {
                 localStorage.setItem('game2d_camera_zoom', val.toString());
             } catch (e) {
