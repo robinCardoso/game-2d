@@ -135,6 +135,31 @@ Para cada célula (x,y) com overlay grama:
 
 Sem comparar `variantGroup` stone vs sand — só “é chão” vs “tem grama ao lado”.
 
+## Render em runtime (multi-sprite por célula)
+
+Uma célula de chão pode precisar **mais de um tile de borda** (ex.: corredor O+E, cruz + com 4 quinas L).
+
+| Etapa | Onde | Regra |
+|-------|------|--------|
+| Recalc (pintura) | `recalculateAutoBorderRegion` | Grava **1** id primário em `borderOverlay`; halo 2 |
+| Draw | `collectBorderDrawMasks` → `collectBorderDrawTileIdsCached` | Resolve **todos** os sprites necessários por célula |
+| Cache | `borderDrawTileIdsCache` | Invalida em load, undo, reload tiles, recalc regional |
+| Grama | `cellHasGrass` | Se overlay grama ≠ vazio → **nunca** desenha borda na célula |
+
+**NÃO REGREDIR:** random só em `resolvePaintTileId`; draw usa ids fixos + cache.
+
+## Performance (Studio)
+
+Ver seção 7 em [studio-improvements-log.md](./studio-improvements-log.md).
+
+Resumo:
+
+- **Viewport culling:** `draw()` itera só `startX..endX` × `startY..endY` (~700 tiles), não 256×256.
+- **Andares vazios:** `floorHasVisibleContentInView` pula Z sem conteúdo na tela.
+- **Minimap:** rebuild 256×256 só ao carregar/trocar andar/pintar base; ponto do player incremental.
+- **Idle FPS:** Studio 30 FPS após 2 s parado; Play (`playApp.ts`) sempre 60 FPS.
+- **Debug:** `localStorage debug.perf` → `viewport N/65536 tiles`, `fps 30 (idle)`.
+
 ## Fora de escopo (UI atual)
 
 - Aba Borda dedicada no mapa

@@ -13,7 +13,8 @@ Este repositório é um **Studio 2D estilo Tibia** (editor + engine). Leia isto 
 | Documento | Conteúdo |
 |-----------|----------|
 | [docs/studio-improvements-log.md](docs/studio-improvements-log.md) | Log de melhorias + checklist de regressão |
-| [docs/map-format.md](docs/map-format.md) | Formato `MapDocument`, `ref`, tileRefs |
+| [docs/auto-border.md](docs/auto-border.md) | Auto-borda grass_edges, camadas, performance |
+| [docs/map-format.md](docs/map-format.md) | Formato `MapDocument`, `ref`, tileRefs, `layers` |
 | [docs/sprite-exporter-walkthrough.md](docs/sprite-exporter-walkthrough.md) | Calibrador, export, exclusão |
 | [docs/architecture.md](docs/architecture.md) | Camadas engine / editor |
 | [docs/ui-menus.md](docs/ui-menus.md) | IDs de UI estáveis |
@@ -26,13 +27,16 @@ Este repositório é um **Studio 2D estilo Tibia** (editor + engine). Leia isto 
 4. Random (`🎲`) **só** em `resolvePaintTileId` — nunca no `draw()`
 5. Strips `*_variants` inferem `variantGroup` se ausente
 6. Exclusão de sprite: `sprite-usage` → `delete-map-sprite` (dev only)
+7. **Save mapa:** `formatMapDocumentJson` inclui `layers.grass` / `layers.border` quando não vazios
+8. **Auto-borda:** grama no overlay; filete na célula de chão vizinha; `collectBorderDrawTileIdsCached` no draw (não recalcular vizinhos todo frame)
+9. **Performance Studio:** viewport culling em `draw()`; cache invalida em load/undo/recalc; Play sempre 60 FPS
 
 ## Ao implementar melhorias nesta área
 
 1. Manter invariantes acima
 2. Atualizar [docs/studio-improvements-log.md](docs/studio-improvements-log.md)
 3. Ajustar [.cursor/rules/studio-map-sprites.mdc](.cursor/rules/studio-map-sprites.mdc) se novas regras surgirem
-4. Rodar checklist manual da seção 7 do log de melhorias
+4. Rodar checklist manual da seção **8** do log de melhorias
 
 ## Comandos
 

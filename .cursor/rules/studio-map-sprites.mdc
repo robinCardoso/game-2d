@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Studio — sprites de mapa, tiles e mapas (anti-regressão)
 
-Referência detalhada: `docs/studio-improvements-log.md`, `docs/sprite-exporter-walkthrough.md`, `docs/map-format.md`.
+Referência detalhada: `docs/studio-improvements-log.md`, `docs/auto-border.md`, `docs/sprite-exporter-walkthrough.md`, `docs/map-format.md`.
 
 ## Constantes e arquivos
 
@@ -65,6 +65,24 @@ Referência detalhada: `docs/studio-improvements-log.md`, `docs/sprite-exporter-
 - **Seletor:** só `tiles/maps/**` via API — nomes vêm de `nameOverride` ou filename.
 - Tile avulso + strip no mesmo grupo (`variantGroup`) → um 🎲 com N+M membros; evitar duplicata desnecessária (ex. `01_grama.png` + strip grama).
 
+## Auto-borda e camadas — NÃO REGREDIR
+
+- **Camadas:** `worldMap` (base) + `grassOverlayMap` + `borderOverlayMap` — ver `src/engine/mapPaintLayers.ts`.
+- **Pintura grama:** aditiva no overlay; **não** apagar base; borracha remove só overlay grama.
+- **Filete:** desenhado na **célula de chão vizinha** à grama, nunca por cima de célula com grama (`cellHasGrass`).
+- **Multi-sprite:** `collectBorderDrawMasks()` no draw via **`collectBorderDrawTileIdsCached`** — cache invalida em load, undo, `reloadTileRegistry`, `recalculateAutoBorderRegion`.
+- **Recalc pintura:** `deferBorderRecalc` durante traço; **`flushPendingBorderRecalc()`** no mouseup (1× por traço).
+- **Save JSON:** `mapDocumentFormat.ts` deve exportar `layers.grass` e `layers.border`.
+- **Random:** só `resolvePaintTileId`; render e mapa carregado usam ids fixos.
+
+## Performance render (Studio) — NÃO REGREDIR
+
+- **`draw()`:** só células visíveis (`computeViewportTileBounds`); pular andares vazios (`floorHasVisibleContentInView`).
+- **`buildBorderMaskTileIndex`:** 1× por frame, **fora** do loop de andares.
+- **Minimap:** rebuild completo só quando dirty; ponto do player incremental.
+- **Idle FPS:** Studio 30 FPS após 2 s sem input; **60 FPS** ao interagir e nas abas Portais/Spawns; **Play (`playApp.ts`) sempre 60 FPS**.
+- **Debug dev:** `localStorage` keys `debug.perf`, `debug.paint`, `debug.map.save`, `debug.movement` — ver `docs/studio-improvements-log.md` §7.8.
+
 ## Checklist antes de alterar este subsistema
 
 - [ ] Registry ainda registra em ordem determinística de path?
@@ -73,3 +91,6 @@ Referência detalhada: `docs/studio-improvements-log.md`, `docs/sprite-exporter-
 - [ ] Strips sem grupo ainda inferem `variantGroup`?
 - [ ] Exclusão ainda verifica `sprite-usage`?
 - [ ] `tile_properties` chave = filename real do PNG?
+- [ ] Save ainda inclui `layers` quando grass/border não vazios?
+- [ ] Draw ainda usa cache de bordas + viewport culling (não loop 256×256)?
+- [ ] Recalc de borda ainda defer + flush no mouseup?

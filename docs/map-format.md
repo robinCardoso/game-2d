@@ -81,6 +81,32 @@ Só são serializadas **células pintadas**. Mapa vazio = sem chave `tiles`.
 }
 ```
 
+### Campo `layers` (auto-borda)
+
+Camadas esparsas adicionais ao `tiles` (base). Formato igual ao de `tiles`: chave = andar Z, valor = array `{ x, y, id, ref? }`.
+
+```json
+"layers": {
+  "grass": {
+    "0": [
+      { "x": 45, "y": 46, "id": 32, "ref": "grama_20_var_variants#3" }
+    ]
+  },
+  "border": {
+    "0": []
+  }
+}
+```
+
+| Subcampo | Conteúdo |
+|----------|----------|
+| `layers.grass` | Overlay de grama pintada (modo Tibia: base pedra permanece) |
+| `layers.border` | Overlay de borda recalculado; **pode estar vazio** no export se só render dinâmico |
+
+- **Save:** `serializeMapDocument` + `formatMapDocumentJson` (`src/engine/mapDocumentFormat.ts`) — incluir `layers` quando não vazios.
+- **Load:** `deserializeMapDocument` → `grassOverlay` / `borderOverlay` em memória.
+- **Undo:** snapshot das três camadas em `main.ts` (`getMapPaintSnapshot`).
+
 ### Campo `tiles`
 
 - Chave = andar **Z** como string (`"0"`, `"-1"`, `"3"`)
@@ -99,6 +125,7 @@ Só são serializadas **células pintadas**. Mapa vazio = sem chave `tiles`.
 Para reduzir ruído, o export **não inclui**:
 
 - `tiles` — se nenhuma célula pintada
+- `layers` — se `grass` e `border` vazios
 - `metadata`, `houses` — se `{}`
 - `spawns`, `portals` — se `[]`
 
