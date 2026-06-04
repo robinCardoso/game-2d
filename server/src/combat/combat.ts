@@ -1,7 +1,6 @@
 import { VocationId } from '../../../shared/types/character';
-import { calculateStatsForLevel } from '../../../src/engine/character/calculateStats';
+import { calculateStatsForLevel, VocationConfig } from '../../../src/engine/character/calculateStats';
 import { calculateMeleeDamage, calculateDistanceDamage, calculateMagicDamage } from '../../../src/engine/combat/calculateDamage';
-import { VOCATIONS } from '../../../src/game-data/default/vocations';
 
 export interface CombatTarget {
   id: string;
@@ -32,11 +31,10 @@ export function processAttack(
   attacker: CombatAttacker,
   target: CombatTarget,
   attackType: 'melee' | 'distance' | 'magic',
+  vocationConfig: VocationConfig,
   spellMultiplier: number = 1.0
 ): DamageResult {
-  // 1. Resolve concrete configuration from Game Data
-  const vocationConfig = VOCATIONS[attacker.vocation] || VOCATIONS.knight;
-  // 2. Calculate the attacker's server-authoritative stats for their level
+  // 1. Calculate the attacker's server-authoritative stats for their level using the passed configuration
   const stats = calculateStatsForLevel(vocationConfig, attacker.level);
 
   let damageResult;

@@ -12,8 +12,8 @@ const genderSelect = document.getElementById('gender') as HTMLSelectElement;
 const presetPreview = document.getElementById('presetPreview') as HTMLImageElement;
 
 function updatePreview(): void {
-    if (presetPreview && presetSelect) {
-        presetPreview.src = `/tiles/characters/${presetSelect.value}.png`;
+    if (presetPreview && presetSelect && genderSelect) {
+        presetPreview.src = `/tiles/characters/vocations/${genderSelect.value}/${presetSelect.value}.png`;
     }
 }
 

@@ -11,7 +11,8 @@ import { getSupabase, isSupabaseConfigured, mapDbCharacter, type DbCharacter } f
 import type { CharacterRow } from './types';
 import type { Gender } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
-import { MAX_CHARACTERS_PER_ACCOUNT, OUTFIT_PRESETS } from './types';
+import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
+import { OUTFIT_PRESETS } from '../game-data/default/outfits';
 
 export async function listCharacters(accountId: string): Promise<CharacterRow[]> {
     if (isMockAuthEnabled()) {
