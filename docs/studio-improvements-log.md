@@ -395,3 +395,15 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 - [architecture.md](./architecture.md)
 - Regra Cursor: `.cursor/rules/studio-map-sprites.mdc`
 - AGENTS.md — guia para agentes IA
+
+---
+
+## 18. Centralização de Mapas e Portais no Game Data (2026-06-04)
+
+### Desacoplamento e Centralização da Camada de Configuração de Dados
+- **Arquivos:** `src/game-data/default/maps.ts`, `src/game-data/default/portals.ts`, `src/game-data/default/index.ts`, `src/game/playApp.ts`
+- **Problema:** A configuração de mapas e as posições de portais estáticos do mundo do jogo estavam acopladas no motor do jogo e nos JSONs dos mapas do client.
+- **Solução:**
+  1. **Commit 1:** Criado `maps.ts` definindo `MAPS: GameMapConfig[]` centralizadamente na camada de Game Data e substituído o `MAP_REGISTRY` no runtime do client por `DEFAULT_GAME_DATA.maps`.
+  2. **Commit 2:** Criado `portals.ts` definindo `PORTALS: GamePortalConfig[]` no Game Data. Removida a variável `worldPortals` em `playApp.ts` e implementado o helper `getPortalAt(mapId, position)` para buscar portais dinamicamente da fonte de dados estática `DEFAULT_GAME_DATA.portals`.
+
