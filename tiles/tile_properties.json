@@ -194,5 +194,23 @@
     "walkable": true,
     "speedModifier": 1,
     "isStair": false
+  },
+  "01_mar_random_variants": {
+    "walkable": false,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-mar-random_variants",
+    "assetType": "terrain",
+    "variantGroup": "01-water-randon",
+    "variantStripFrames": 18,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 18,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
   }
 }

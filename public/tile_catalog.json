@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-06-04T02:44:17.181Z",
+  "generatedAt": "2026-06-04T02:52:23.984Z",
   "tileSize": 32,
   "format": "game-2d/map-sparse-v1",
   "coordSystem": {
@@ -37,8 +37,32 @@
         34
       ]
     },
-    "02-grass-random": {
+    "01-water-randon": {
       "brushId": 9001,
+      "label": "01 Water Randon",
+      "memberIds": [
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59
+      ]
+    },
+    "02-grass-random": {
+      "brushId": 9002,
       "label": "02 Grass Random",
       "memberIds": [
         35,
@@ -47,7 +71,7 @@
       ]
     },
     "ground": {
-      "brushId": 9002,
+      "brushId": 9003,
       "label": "Ground aleatório",
       "memberIds": [
         38,
@@ -346,6 +370,168 @@
       "variantGroup": "ground",
       "walkable": true,
       "variantIndex": 3
+    },
+    {
+      "id": 42,
+      "name": "01-mar-random_variants · 1",
+      "ref": "01_mar_random_variants#0",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 0
+    },
+    {
+      "id": 43,
+      "name": "01-mar-random_variants · 2",
+      "ref": "01_mar_random_variants#1",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 1
+    },
+    {
+      "id": 44,
+      "name": "01-mar-random_variants · 3",
+      "ref": "01_mar_random_variants#2",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 2
+    },
+    {
+      "id": 45,
+      "name": "01-mar-random_variants · 4",
+      "ref": "01_mar_random_variants#3",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 3
+    },
+    {
+      "id": 46,
+      "name": "01-mar-random_variants · 5",
+      "ref": "01_mar_random_variants#4",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 4
+    },
+    {
+      "id": 47,
+      "name": "01-mar-random_variants · 6",
+      "ref": "01_mar_random_variants#5",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 5
+    },
+    {
+      "id": 48,
+      "name": "01-mar-random_variants · 7",
+      "ref": "01_mar_random_variants#6",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 6
+    },
+    {
+      "id": 49,
+      "name": "01-mar-random_variants · 8",
+      "ref": "01_mar_random_variants#7",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 7
+    },
+    {
+      "id": 50,
+      "name": "01-mar-random_variants · 9",
+      "ref": "01_mar_random_variants#8",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 8
+    },
+    {
+      "id": 51,
+      "name": "01-mar-random_variants · 10",
+      "ref": "01_mar_random_variants#9",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 9
+    },
+    {
+      "id": 52,
+      "name": "01-mar-random_variants · 11",
+      "ref": "01_mar_random_variants#10",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 10
+    },
+    {
+      "id": 53,
+      "name": "01-mar-random_variants · 12",
+      "ref": "01_mar_random_variants#11",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 11
+    },
+    {
+      "id": 54,
+      "name": "01-mar-random_variants · 13",
+      "ref": "01_mar_random_variants#12",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 12
+    },
+    {
+      "id": 55,
+      "name": "01-mar-random_variants · 14",
+      "ref": "01_mar_random_variants#13",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 13
+    },
+    {
+      "id": 56,
+      "name": "01-mar-random_variants · 15",
+      "ref": "01_mar_random_variants#14",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 14
+    },
+    {
+      "id": 57,
+      "name": "01-mar-random_variants · 16",
+      "ref": "01_mar_random_variants#15",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 15
+    },
+    {
+      "id": 58,
+      "name": "01-mar-random_variants · 17",
+      "ref": "01_mar_random_variants#16",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 16
+    },
+    {
+      "id": 59,
+      "name": "01-mar-random_variants · 18",
+      "ref": "01_mar_random_variants#17",
+      "category": "ground",
+      "variantGroup": "01-water-randon",
+      "walkable": false,
+      "variantIndex": 17
     }
   ]
 }
