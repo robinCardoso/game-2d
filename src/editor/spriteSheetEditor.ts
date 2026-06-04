@@ -203,7 +203,7 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
             const profile = getProfile();
             const filtered = serverCharactersList.filter((e) => entryMatchesProfile(e, profile));
             const placeholders: Record<SpriteProfileId, string> = {
-                player: '-- Selecionar Personagem --',
+                player: '-- Selecionar Outfit --',
                 npc: '-- Selecionar NPC --',
                 monster: '-- Selecionar Mob --',
             };
