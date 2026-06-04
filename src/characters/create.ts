@@ -2,7 +2,8 @@ import '../shared/shell.css';
 import { requireAuth } from '../shared/authGuard';
 import { createCharacter, validateCharacterName } from '../shared/characterStore';
 import { track } from '../shared/analytics';
-import type { Gender } from '../../shared/types/character';
+import type { Gender, VocationId } from '../../shared/types/character';
+import { OUTFIT_PRESETS } from '../game-data/default/outfits';
 
 const session = await requireAuth();
 const errEl = document.getElementById('createError') as HTMLElement;
@@ -13,7 +14,12 @@ const presetPreview = document.getElementById('presetPreview') as HTMLImageEleme
 
 function updatePreview(): void {
     if (presetPreview && presetSelect && genderSelect) {
-        presetPreview.src = `/tiles/characters/vocations/${genderSelect.value}/${presetSelect.value}.png`;
+        const vocation = presetSelect.value as VocationId;
+        const gender = genderSelect.value as Gender;
+        const preset = OUTFIT_PRESETS[vocation];
+        if (preset) {
+            presetPreview.src = `/${preset.sprites[gender]?.spriteSheetUrl || ''}`;
+        }
     }
 }
 
