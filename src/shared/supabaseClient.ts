@@ -35,6 +35,9 @@ export interface DbCharacter {
 
 export function mapDbCharacter(row: DbCharacter): CharacterRow {
     const config = row.outfit_config as any;
+    const vocation = config.vocation ?? 'knight';
+    const gender = config.gender ?? 'male';
+    const spriteSheetUrl = config.spriteSheetUrl || `tiles/characters/vocations/${gender}/${vocation}.png`;
     return {
         id: row.id,
         accountId: row.account_id,
@@ -44,14 +47,14 @@ export function mapDbCharacter(row: DbCharacter): CharacterRow {
         createdAt: row.created_at,
         lastPlayedAt: row.last_played_at,
         deletedAt: row.deleted_at,
-        vocation: config.vocation ?? 'knight',
+        vocation: vocation,
         level: config.level ?? 1,
         experience: config.experience ?? 0,
-        gender: config.gender ?? 'male',
+        gender: gender,
         appearance: config.appearance ?? {
-            gender: (config.gender ?? 'male') as 'male' | 'female',
-            vocation: (config.vocation ?? 'knight') as 'knight' | 'mage' | 'archer',
-            outfitId: `default_${config.vocation ?? 'knight'}_${config.gender ?? 'male'}`,
+            gender: gender as 'male' | 'female',
+            outfitId: config.appearance?.outfitId || `default_${vocation}_${gender}`,
+            spriteSheetUrl,
         },
         gameId: config.gameId ?? DEFAULT_GAME_CONFIG.id,
         mapId: config.mapId || row.spawn_map_id || DEFAULT_GAME_CONFIG.start.mapId,

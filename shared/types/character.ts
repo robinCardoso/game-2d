@@ -4,8 +4,8 @@ export type VocationId = 'knight' | 'mage' | 'archer';
 
 export type CharacterAppearance = {
   gender: Gender;
-  vocation: VocationId;
   outfitId: string;
+  spriteSheetUrl: string;
 };
 
 export type CharacterStats = {

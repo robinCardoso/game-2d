@@ -1,5 +1,5 @@
 import type { AuthSession, CharacterRow, UserProfile } from './types';
-import type { Gender } from '../../shared/types/character';
+import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
@@ -49,6 +49,7 @@ function readChars(): CharacterRow[] {
             const config = c.outfitConfig as any || {};
             const vocation = c.vocation ?? config.vocation ?? 'knight';
             const gender = c.gender ?? config.gender ?? 'male';
+            const spriteSheetUrl = c.outfitConfig?.spriteSheetUrl || `tiles/characters/vocations/${gender}/${vocation}.png`;
             return {
                 ...c,
                 vocation,
@@ -57,8 +58,8 @@ function readChars(): CharacterRow[] {
                 gender,
                 appearance: c.appearance ?? config.appearance ?? {
                     gender: gender as 'male' | 'female',
-                    vocation: vocation as 'knight' | 'mage' | 'archer',
-                    outfitId: `default_${vocation}_${gender}`,
+                    outfitId: config.appearance?.outfitId || `default_${vocation}_${gender}`,
+                    spriteSheetUrl,
                 },
                 gameId: c.gameId ?? config.gameId ?? DEFAULT_GAME_CONFIG.id,
                 mapId: c.mapId || config.mapId || c.spawnMapId || DEFAULT_GAME_CONFIG.start.mapId,
@@ -145,40 +146,26 @@ export function mockGetCharacter(id: string, accountId: string): CharacterRow | 
 export async function mockCreateCharacter(
     accountId: string,
     name: string,
-    presetId: string,
-    spawnMapId: string,
-    gender: Gender = 'male'
+    vocationId: VocationId,
+    gender: Gender,
+    outfitId: string,
+    spriteSheetUrl: string,
+    spawnMapId: string
 ): Promise<CharacterRow> {
     const chars = readChars();
     const active = chars.filter((c) => c.accountId === accountId && !c.deletedAt);
     if (active.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
-    
-    let spriteSheetUrl = `tiles/characters/vocations/${gender}/${presetId}.png`;
-    let displayName = name;
-    try {
-        const response = await fetch('/outfit_presets.json');
-        if (response.ok) {
-            const presets = await response.json();
-            const match = presets.find((p: any) => p.vocationId === presetId && p.gender === gender);
-            if (match) {
-                spriteSheetUrl = match.spriteSheetUrl;
-                displayName = match.name;
-            }
-        }
-    } catch (e) {
-        console.warn('[mockAuth] Falha ao carregar outfit_presets.json:', e);
-    }
 
     const base = createDefaultCharacterConfig();
-    base.name = displayName;
+    base.name = name;
     base.spriteSheetUrl = spriteSheetUrl;
 
     const appearance = {
-        gender: gender as 'male' | 'female',
-        vocation: presetId as 'knight' | 'mage' | 'archer',
-        outfitId: `default_${presetId}_${gender}`,
+        gender,
+        outfitId,
+        spriteSheetUrl,
     };
 
     const row: CharacterRow = {
@@ -187,7 +174,7 @@ export async function mockCreateCharacter(
         name,
         outfitConfig: {
             ...base,
-            vocation: presetId,
+            vocation: vocationId,
             level: 1,
             experience: 0,
             gender,
@@ -200,7 +187,7 @@ export async function mockCreateCharacter(
         spawnMapId,
         createdAt: new Date().toISOString(),
         lastPlayedAt: null,
-        vocation: presetId,
+        vocation: vocationId,
         level: 1,
         experience: 0,
         gender,

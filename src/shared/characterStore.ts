@@ -10,7 +10,7 @@ import {
 } from './mockAuth';
 import { getSupabase, isSupabaseConfigured, mapDbCharacter, type DbCharacter } from './supabaseClient';
 import type { CharacterRow } from './types';
-import type { Gender } from '../../shared/types/character';
+import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
@@ -47,50 +47,36 @@ export async function getCharacter(id: string, accountId: string): Promise<Chara
 export async function createCharacter(
     accountId: string,
     name: string,
-    presetId: string,
-    spawnMapId = DEFAULT_GAME_CONFIG.start.mapId,
-    gender: Gender = 'male'
+    vocationId: VocationId,
+    gender: Gender,
+    outfitId: string,
+    spriteSheetUrl: string,
+    spawnMapId = DEFAULT_GAME_CONFIG.start.mapId
 ): Promise<CharacterRow> {
     if (isMockAuthEnabled()) {
         if (mockIsNameTaken(name)) {
             throw new Error('Este nome já está em uso.');
         }
-        return await mockCreateCharacter(accountId, name, presetId, spawnMapId, gender);
+        return await mockCreateCharacter(accountId, name, vocationId, gender, outfitId, spriteSheetUrl, spawnMapId);
     }
     const existing = await listCharacters(accountId);
     if (existing.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
 
-    let spriteSheetUrl = `tiles/characters/vocations/${gender}/${presetId}.png`;
-    let displayName = name;
-    try {
-        const response = await fetch('/outfit_presets.json');
-        if (response.ok) {
-            const presets = await response.json();
-            const match = presets.find((p: any) => p.vocationId === presetId && p.gender === gender);
-            if (match) {
-                spriteSheetUrl = match.spriteSheetUrl;
-                displayName = match.name;
-            }
-        }
-    } catch (e) {
-        console.warn('[characterStore] Falha ao carregar outfit_presets.json:', e);
-    }
-
     const base = createDefaultCharacterConfig();
-    base.name = displayName;
+    base.name = name;
     base.spriteSheetUrl = spriteSheetUrl;
 
     const appearance = {
-        gender: gender as 'male' | 'female',
-        vocation: presetId as 'knight' | 'mage' | 'archer',
-        outfitId: `default_${presetId}_${gender}`,
+        gender,
+        outfitId,
+        spriteSheetUrl,
     };
 
     const outfitConfigWithStats = {
         ...base,
-        vocation: presetId,
+        vocation: vocationId,
         level: 1,
         experience: 0,
         gender,
