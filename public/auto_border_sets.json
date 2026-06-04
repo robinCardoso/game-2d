@@ -3,7 +3,7 @@
   "sets": {
     "terra_edges": {
       "label": "01-bordas-grama",
-      "fillTerrain": "terra",
+      "fillTerrain": "02-grass-random",
       "category": "borders/grass_edges",
       "sheetFile": "terra_edges_sheet",
       "calibration": {

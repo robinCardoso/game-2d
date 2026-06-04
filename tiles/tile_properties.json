@@ -27,6 +27,42 @@
     "speedModifier": 1,
     "isStair": false
   },
+  "01_grama_randon_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-grama-randon_variants",
+    "assetType": "terrain",
+    "variantGroup": "01-grass-random",
+    "variantStripFrames": 15,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 15,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
+  },
+  "02_grama_random_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "02-grama-random_variants",
+    "assetType": "terrain",
+    "variantGroup": "02-grass-random",
+    "variantStripFrames": 3,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 3,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
+  },
   "terra_edges_mask_1": {
     "nameOverride": "01-bordas-grama · máscara 1",
     "assetType": "border",
@@ -158,23 +194,5 @@
     "walkable": true,
     "speedModifier": 1,
     "isStair": false
-  },
-  "01_grama_randon_variants": {
-    "walkable": true,
-    "speedModifier": 1,
-    "isStair": false,
-    "nameOverride": "01-grama-randon_variants",
-    "assetType": "terrain",
-    "variantGroup": "01-grass-random",
-    "variantStripFrames": 15,
-    "frameWidth": 32,
-    "frameHeight": 32,
-    "offsetX": 0,
-    "offsetY": 0,
-    "gapX": 0,
-    "gapY": 0,
-    "gridCols": 15,
-    "gridRows": 1,
-    "sheetLayout": "horizontal"
   }
 }

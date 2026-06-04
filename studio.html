@@ -503,10 +503,9 @@
                     <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Nome exibido</label>
                     <input type="text" id="mapSpriteBorderSetLabelInput" value="Bordas de grama" placeholder="Bordas de grama" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
                     <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Terreno pintado (fill)</label>
-                    <input type="text" id="mapSpriteFillTerrainInput" list="mapSpriteFillTerrainList" value="grass" placeholder="grass" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
-                    <datalist id="mapSpriteFillTerrainList">
-                      <option value="grass"></option>
-                    </datalist>
+                    <select id="mapSpriteFillTerrainInput" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;">
+                      <option value="grass">grass</option>
+                    </select>
                     <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Pasta destino</label>
                     <input type="text" id="mapSpriteBorderCategoryInput" value="terrain/borders/grass_edges" placeholder="terrain/borders/grass_edges" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
                     <p class="flyout-hint" style="margin: 0;">Máscaras genéricas: aplicam-se automaticamente sobre <strong>qualquer chão</strong> ao lado da grama pintada. Não é preciso escolher pedra, areia ou terra.</p>
@@ -539,20 +538,16 @@
                       <input type="checkbox" id="mapSpriteStairToggle" style="accent-color: var(--accent-color); cursor: pointer;" />
                     </label>
 
-                    <label class="flyout-label">Variação aleatória</label>
-                    <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Grupo de variação (opcional)</label>
-                    <input type="text" id="mapSpriteVariantGroupInput" list="mapSpriteVariantGroupList" placeholder="ex: grass, stone_floor" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; outline: none; margin-bottom: 6px;" />
-                    <datalist id="mapSpriteVariantGroupList">
-                      <option value="grass"></option>
-                      <option value="stone"></option>
-                      <option value="dirt"></option>
-                      <option value="sand"></option>
-                    </datalist>
-                    <p class="flyout-hint" style="margin-bottom: 8px;">Tiles com o mesmo grupo formam um pincel aleatório na aba Tile.</p>
-                    <label class="check-row" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: var(--text-dim); font-size: 11px;">
-                      <span>Excluir deste grupo (tile único/fixe)</span>
-                      <input type="checkbox" id="mapSpriteVariantGroupExclude" style="accent-color: var(--accent-color); cursor: pointer;" />
-                    </label>
+                     <label class="flyout-label">Variação aleatória</label>
+                     <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Grupo de variação (opcional)</label>
+                     <select id="mapSpriteVariantGroupSelect" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; outline: none; margin-bottom: 6px;">
+                       <option value="">-- Sem grupo / Tile Fixo --</option>
+                       <option value="grass">grass</option>
+                       <option value="_new_group_">+ Novo Grupo...</option>
+                     </select>
+                     <input type="text" id="mapSpriteVariantGroupInput" placeholder="Nome do novo grupo..." style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; outline: none; margin-bottom: 6px; display: none;" />
+                     <p class="flyout-hint" style="margin-bottom: 8px;">Tiles com o mesmo grupo formam um pincel aleatório na aba Tile.</p>
+                     <input type="checkbox" id="mapSpriteVariantGroupExclude" style="display: none;" />
                   </div>
 
                   <label class="flyout-label">Ações / Importar</label>

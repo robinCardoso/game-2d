@@ -150,7 +150,7 @@ export function initMapSpriteEditor() {
     const categoryBlock = document.getElementById('mapSpriteCategoryBlock') as HTMLDivElement | null;
     const borderSetIdInput = document.getElementById('mapSpriteBorderSetIdInput') as HTMLInputElement | null;
     const borderSetLabelInput = document.getElementById('mapSpriteBorderSetLabelInput') as HTMLInputElement | null;
-    const fillTerrainInput = document.getElementById('mapSpriteFillTerrainInput') as HTMLInputElement | null;
+    const fillTerrainInput = document.getElementById('mapSpriteFillTerrainInput') as HTMLSelectElement | null;
     const borderCategoryInput = document.getElementById('mapSpriteBorderCategoryInput') as HTMLInputElement | null;
 
     // Propriedades físicas
@@ -160,8 +160,7 @@ export function initMapSpriteEditor() {
     const stairToggle = document.getElementById('mapSpriteStairToggle') as HTMLInputElement;
     const variantGroupInput = document.getElementById('mapSpriteVariantGroupInput') as HTMLInputElement | null;
     const variantGroupExclude = document.getElementById('mapSpriteVariantGroupExclude') as HTMLInputElement | null;
-    const variantGroupDatalist = document.getElementById('mapSpriteVariantGroupList') as HTMLDataListElement | null;
-    const fillTerrainDatalist = document.getElementById('mapSpriteFillTerrainList') as HTMLDataListElement | null;
+    const variantGroupSelect = document.getElementById('mapSpriteVariantGroupSelect') as HTMLSelectElement | null;
 
     // Ações
     const loadBtn = document.getElementById('loadMapSpriteBtn');
@@ -293,8 +292,11 @@ export function initMapSpriteEditor() {
         stairToggle.checked = false;
         if (variantGroupInput && variantGroupExclude) {
             variantGroupInput.value = '';
-            variantGroupExclude.checked = false;
-            variantGroupInput.disabled = false;
+            variantGroupExclude.checked = true;
+            if (variantGroupSelect) {
+                variantGroupSelect.value = '';
+            }
+            variantGroupInput.style.display = 'none';
         }
         chromaKeyToggle.checked = false;
         if (chromaKeyToleranceRow) chromaKeyToleranceRow.style.display = 'none';
@@ -324,22 +326,48 @@ export function initMapSpriteEditor() {
         
         const sortedGroups = Array.from(known).sort((a, b) => a.localeCompare(b, 'pt'));
 
-        if (variantGroupDatalist) {
-            variantGroupDatalist.innerHTML = '';
+        if (variantGroupSelect) {
+            const currentValue = variantGroupSelect.value;
+            variantGroupSelect.innerHTML = '';
+            
+            const defOpt = document.createElement('option');
+            defOpt.value = '';
+            defOpt.textContent = '-- Sem grupo / Tile Fixo --';
+            variantGroupSelect.appendChild(defOpt);
+            
             sortedGroups.forEach((group) => {
                 const opt = document.createElement('option');
                 opt.value = group;
-                variantGroupDatalist.appendChild(opt);
+                opt.textContent = group;
+                variantGroupSelect.appendChild(opt);
             });
+            
+            const newOpt = document.createElement('option');
+            newOpt.value = '_new_group_';
+            newOpt.textContent = '+ Novo Grupo...';
+            variantGroupSelect.appendChild(newOpt);
+            
+            if (currentValue && (sortedGroups.includes(currentValue) || currentValue === '_new_group_')) {
+                variantGroupSelect.value = currentValue;
+            } else {
+                variantGroupSelect.value = '';
+            }
         }
 
-        if (fillTerrainDatalist) {
-            fillTerrainDatalist.innerHTML = '';
+        if (fillTerrainInput) {
+            const currentValue = fillTerrainInput.value;
+            fillTerrainInput.innerHTML = '';
             sortedGroups.forEach((group) => {
                 const opt = document.createElement('option');
                 opt.value = group;
-                fillTerrainDatalist.appendChild(opt);
+                opt.textContent = group;
+                fillTerrainInput.appendChild(opt);
             });
+            if (currentValue && sortedGroups.includes(currentValue)) {
+                fillTerrainInput.value = currentValue;
+            } else if (sortedGroups.includes('grass')) {
+                fillTerrainInput.value = 'grass';
+            }
         }
     }
 
@@ -352,11 +380,24 @@ export function initMapSpriteEditor() {
     }
 
     function syncVariantGroupFieldsFromProperties(properties?: MapSpriteListEntry['properties']): void {
-        if (!variantGroupInput || !variantGroupExclude) return;
+        if (!variantGroupInput || !variantGroupExclude || !variantGroupSelect) return;
         const group = properties?.variantGroup?.trim() ?? '';
         variantGroupInput.value = group;
         variantGroupExclude.checked = !group;
-        variantGroupInput.disabled = variantGroupExclude.checked;
+        
+        if (group === '') {
+            variantGroupSelect.value = '';
+            variantGroupInput.style.display = 'none';
+        } else {
+            const hasOption = Array.from(variantGroupSelect.options).some(opt => opt.value === group);
+            if (hasOption) {
+                variantGroupSelect.value = group;
+                variantGroupInput.style.display = 'none';
+            } else {
+                variantGroupSelect.value = '_new_group_';
+                variantGroupInput.style.display = 'block';
+            }
+        }
     }
 
     function refreshCategoryDatalist(): void {
@@ -785,11 +826,23 @@ export function initMapSpriteEditor() {
         }
     }
 
-    variantGroupExclude?.addEventListener('change', () => {
-        if (!variantGroupInput || !variantGroupExclude) return;
-        variantGroupInput.disabled = variantGroupExclude.checked;
-        if (variantGroupExclude.checked) {
+    variantGroupSelect?.addEventListener('change', () => {
+        if (!variantGroupInput || !variantGroupExclude || !variantGroupSelect) return;
+        
+        const val = variantGroupSelect.value;
+        if (val === '_new_group_') {
+            variantGroupInput.style.display = 'block';
             variantGroupInput.value = '';
+            variantGroupInput.focus();
+            variantGroupExclude.checked = false;
+        } else if (val === '') {
+            variantGroupInput.style.display = 'none';
+            variantGroupInput.value = '';
+            variantGroupExclude.checked = true;
+        } else {
+            variantGroupInput.style.display = 'none';
+            variantGroupInput.value = val;
+            variantGroupExclude.checked = false;
         }
     });
 

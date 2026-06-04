@@ -26,6 +26,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Movimentação de Sprites** | Trocar categoria/subpasta de um sprite existente não movia a imagem física `.png` de lugar no servidor | API detecta URL local no `spriteBase64` e move/copia o arquivo físico automaticamente no backend |
 | **Fatiamento Customizado** | O motor de jogo ignorava offsets (`offsetX`, `offsetY`, `gap`) ao fatiar variant strips horizontais/verticais | `tileRegistry.ts` aprimorado para respeitar os offsets e tamanhos customizados de `tile_properties.json` |
 | **Auto-borda Dinâmico** | O sistema só ativava auto-borda para o grupo de variação estático `grass` | `autoBorderUi.ts` busca dinamicamente conjuntos cujo `fillTerrain` corresponda ao `variantGroup` selecionado |
+| **Terrenos/Grupos Dropdowns** | Campos de texto para `fillTerrain` e `variantGroup` propícios a erros de digitação e esquecimentos | Substituídos por `<select>` dinâmicos com opção de escolher existentes ou criar novos grupos na hora |
 
 ---
 
@@ -356,7 +357,18 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 15. Referências
+## 15. Seleção Dinâmica de Terrenos e Grupos por Dropdown (2026-06-04)
+
+### Substituição de Campos de Texto por Dropdowns (Select)
+- **Arquivos:** `studio.html`, `src/editor/mapSpriteEditor.ts`
+- **Problema:** Ao criar um conjunto de auto-borda ou calibrar um novo sprite de terreno, o usuário precisava digitar manualmente o nome do grupo de variação (como `01-grass-random`). Esse fluxo gerava ambiguidades, erros de digitação e esquecimento de termos, impedindo a engine e o auto-borda de funcionarem corretamente.
+- **Solução:**
+  1. O campo **Terreno pintado (fill)** do conjunto auto-borda foi substituído por um `<select>` nativo dinâmico.
+  2. O campo **Grupo de variação (opcional)** do terreno também foi substituído por um `<select>` nativo dinâmico. Se o usuário escolher `-- Sem grupo --`, o sprite é salvo como estático. Se escolher um grupo existente, é agrupado com ele. Se escolher a opção `+ Novo Grupo...`, um campo de texto surge na hora permitindo que ele digite o nome do novo grupo personalizado.
+
+---
+
+## 16. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)
