@@ -23,13 +23,15 @@ if (!characterId) {
     }
 }
 
-document.getElementById('changeCharLink')?.addEventListener('click', () => {
-    stopLocationAutosave();
+document.getElementById('changeCharLink')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await stopLocationAutosave();
+    location.href = '/characters.html';
 });
 
 document.getElementById('logoutPlay')?.addEventListener('click', async (e) => {
     e.preventDefault();
-    stopLocationAutosave();
+    await stopLocationAutosave();
     await signOut();
     location.href = '/login.html';
 });

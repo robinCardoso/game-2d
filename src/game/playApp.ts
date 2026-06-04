@@ -243,7 +243,7 @@ function setupLocationAutosave(): void {
     }, 10000);
 }
 
-export function stopLocationAutosave(): void {
+export async function stopLocationAutosave(): Promise<void> {
     if (!locationAutosaveStarted) return;
     locationAutosaveStarted = false;
 
@@ -254,7 +254,7 @@ export function stopLocationAutosave(): void {
         locationAutosaveIntervalId = null;
     }
 
-    void saveCurrentCharacterLocation();
+    await saveCurrentCharacterLocation();
 }
 
 
