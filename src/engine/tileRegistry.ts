@@ -87,29 +87,16 @@ export function inferVariantStripFrameCount(
     const h = img.naturalHeight || img.height || 0;
     const explicit = Math.max(0, Math.floor(Number(custom?.variantStripFrames) || 0));
 
+    if (explicit > 1) {
+        return explicit;
+    }
+
     const fromImage =
         h === tileSize && w > tileSize && w % tileSize === 0
             ? Math.floor(w / tileSize)
             : 0;
 
-    if (fromImage >= 2 && fromImage <= 256) {
-        if (explicit > 1 && explicit !== fromImage && fileName) {
-            console.warn(
-                `[TileRegistry] ${fileName}: variantStripFrames=${explicit}, PNG tem ${fromImage} frames — usando ${fromImage}.`
-            );
-        }
-        return fromImage;
-    }
-
-    if (explicit > 1 && w === tileSize && fileName) {
-        variantStripMismatches.push({
-            fileName,
-            expectedFrames: explicit,
-            imageWidth: w,
-        });
-    }
-
-    return 0;
+    return fromImage;
 }
 
 type NextIdAllocator = { next: number; take(): number };
@@ -184,8 +171,19 @@ function registerVariantStrip(
         ...(resolvedGroup ? { variantGroup: resolvedGroup } : {}),
     };
 
+    const ox = custom?.offsetX ?? 0;
+    const oy = custom?.offsetY ?? 0;
+    const gx = custom?.gapX ?? 0;
+    const gy = custom?.gapY ?? 0;
+    const fw = custom?.frameWidth ?? tileSize;
+    const fh = custom?.frameHeight ?? tileSize;
+    const isVertical = custom?.sheetLayout === 'vertical';
+
     for (let i = 0; i < stripFrames; i++) {
         const frameId = ids.take();
+        const sx = isVertical ? ox : ox + i * (fw + gx);
+        const sy = isVertical ? oy + i * (fh + gy) : oy;
+
         registry[frameId] = {
             id: frameId,
             name: `${baseLabel} · ${i + 1}`,
@@ -194,10 +192,10 @@ function registerVariantStrip(
             paletteCategory,
             fileKey: `${fileName}#${i}`,
             sourceRect: {
-                x: i * tileSize,
-                y: 0,
-                w: tileSize,
-                h: tileSize,
+                x: sx,
+                y: sy,
+                w: fw,
+                h: fh,
             },
             variantStripIndex: i,
             variantStripFrames: stripFrames,

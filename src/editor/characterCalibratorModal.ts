@@ -992,11 +992,6 @@ export function openCharacterCalibrator(
 
     calMapMultiSelectToggle?.addEventListener('change', () => {
         mapMultiSelectMode = calMapMultiSelectToggle.checked;
-        if (mapMultiSelectMode) {
-            if (findSelectedFrameIndex(selectedFrameCol, selectedFrameRow) < 0) {
-                selectedFramesList.push({ col: selectedFrameCol, row: selectedFrameRow });
-            }
-        }
         updateMultiSelectUI();
         updateMapFrameUI();
         renderCalibrator();

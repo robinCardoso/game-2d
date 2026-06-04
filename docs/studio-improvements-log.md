@@ -24,6 +24,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Borracha do Mapa** | Borracha não limpava piso base quando havia grama (comportamento de dois passos impedido por drag culling) | Remoção do `continue` em `eraseTileAt`, limpando grama, base e borda de uma só vez |
 | **Quinas Internas (L)** | Visualização das quinas L em faixa plana 4x1 sem indicação espacial de onde ficava a grama | Alteração para uma grade 3x3 simétrica e intuitiva (cantos de pedra, centro/cardinais de grama) |
 | **Movimentação de Sprites** | Trocar categoria/subpasta de um sprite existente não movia a imagem física `.png` de lugar no servidor | API detecta URL local no `spriteBase64` e move/copia o arquivo físico automaticamente no backend |
+| **Fatiamento Customizado** | O motor de jogo ignorava offsets (`offsetX`, `offsetY`, `gap`) ao fatiar variant strips horizontais/verticais | `tileRegistry.ts` aprimorado para respeitar os offsets e tamanhos customizados de `tile_properties.json` |
 
 ---
 
@@ -336,7 +337,16 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 13. Referências
+## 13. Suporte a Fatiamento Customizado no Motor (2026-06-04)
+
+### Suporte a offsetX, offsetY, gapX, gapY e frameWidth/Height no TileRegistry
+- **Arquivo:** `src/engine/tileRegistry.ts`
+- **Problema:** O registrador de tiles (`registerVariantStrip` e `inferVariantStripFrameCount`) ignorava as propriedades de calibração customizada (como `offsetX`, `offsetY`, `gapX`, `gapY`, `frameWidth`, `frameHeight` e `sheetLayout`) ao carregar e fatiar o PNG. Ele assumia por padrão que a imagem sempre começava em `x = 0` com blocos contíguos de `TILE_SIZE` (32px). Quando um sprite possuía um offset inicial (como 32px de espaço vazio no início de `01_grama_variants.png`), os tiles ficavam desalinhados no mapa e na paleta (mostrando linhas verticais ou tiles cortados).
+- **Solução:** Modificado o registrador para respeitar as propriedades do arquivo `tile_properties.json`. Se `variantStripFrames` estiver configurado, ele assume este valor explicitamente em vez da contagem automática da largura da imagem. O cálculo do `sourceRect` de cada frame agora leva em conta os valores de offset (`offsetX`, `offsetY`), espaçamento (`gapX`, `gapY`), dimensões customizadas e layout de folha (vertical/horizontal).
+
+---
+
+## 14. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)
