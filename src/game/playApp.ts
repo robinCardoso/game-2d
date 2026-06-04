@@ -520,6 +520,14 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     const outfit = character.outfitConfig as CharacterSpriteConfig;
     activeCharacterController = new SpriteAnimationController(outfit);
 
+    if (character.position) {
+        player.tileX = character.position.x;
+        player.tileY = character.position.y;
+        player.worldZ = character.position.z;
+        player.worldX = player.tileX * TILE_SIZE_SCREEN;
+        player.worldY = player.tileY * TILE_SIZE_SCREEN;
+    }
+
     const entry = MAP_REGISTRY.find((m) => m.id === character.spawnMapId) ?? MAP_REGISTRY[0];
     if (!entry) throw new Error('Mapa inicial não encontrado.');
 

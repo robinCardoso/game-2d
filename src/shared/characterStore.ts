@@ -13,6 +13,7 @@ import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { OUTFIT_PRESETS } from '../game-data/default/outfits';
+import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
 
 export async function listCharacters(accountId: string): Promise<CharacterRow[]> {
     if (isMockAuthEnabled()) {
@@ -47,7 +48,7 @@ export async function createCharacter(
     accountId: string,
     name: string,
     presetId: string,
-    spawnMapId = 'rookgaard',
+    spawnMapId = DEFAULT_GAME_CONFIG.start.mapId,
     gender: Gender = 'male'
 ): Promise<CharacterRow> {
     if (isMockAuthEnabled()) {
@@ -79,6 +80,10 @@ export async function createCharacter(
         experience: 0,
         gender,
         appearance,
+        gameId: DEFAULT_GAME_CONFIG.id,
+        mapId: spawnMapId,
+        position: { ...DEFAULT_GAME_CONFIG.start.position },
+        direction: DEFAULT_GAME_CONFIG.start.direction,
     };
 
     const { data, error } = await getSupabase()

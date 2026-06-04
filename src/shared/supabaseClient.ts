@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { CharacterRow } from './types';
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
+import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
 
 let client: SupabaseClient | null = null;
 
@@ -33,6 +34,7 @@ export interface DbCharacter {
 }
 
 export function mapDbCharacter(row: DbCharacter): CharacterRow {
+    const config = row.outfit_config as any;
     return {
         id: row.id,
         accountId: row.account_id,
@@ -42,14 +44,18 @@ export function mapDbCharacter(row: DbCharacter): CharacterRow {
         createdAt: row.created_at,
         lastPlayedAt: row.last_played_at,
         deletedAt: row.deleted_at,
-        vocation: (row.outfit_config as any).vocation ?? 'knight',
-        level: (row.outfit_config as any).level ?? 1,
-        experience: (row.outfit_config as any).experience ?? 0,
-        gender: (row.outfit_config as any).gender ?? 'male',
-        appearance: (row.outfit_config as any).appearance ?? {
-            gender: ((row.outfit_config as any).gender ?? 'male') as 'male' | 'female',
-            vocation: ((row.outfit_config as any).vocation ?? 'knight') as 'knight' | 'mage' | 'archer',
-            outfitId: `default_${(row.outfit_config as any).vocation ?? 'knight'}_${(row.outfit_config as any).gender ?? 'male'}`,
+        vocation: config.vocation ?? 'knight',
+        level: config.level ?? 1,
+        experience: config.experience ?? 0,
+        gender: config.gender ?? 'male',
+        appearance: config.appearance ?? {
+            gender: (config.gender ?? 'male') as 'male' | 'female',
+            vocation: (config.vocation ?? 'knight') as 'knight' | 'mage' | 'archer',
+            outfitId: `default_${config.vocation ?? 'knight'}_${config.gender ?? 'male'}`,
         },
+        gameId: config.gameId ?? DEFAULT_GAME_CONFIG.id,
+        mapId: row.spawn_map_id || config.mapId || DEFAULT_GAME_CONFIG.start.mapId,
+        position: config.position ?? { ...DEFAULT_GAME_CONFIG.start.position },
+        direction: config.direction ?? DEFAULT_GAME_CONFIG.start.direction,
     };
 }

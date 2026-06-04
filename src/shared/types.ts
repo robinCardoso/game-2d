@@ -27,6 +27,14 @@ export interface CharacterRow {
     experience?: number;
     gender?: Gender;
     appearance?: CharacterAppearance;
+    gameId: string;
+    mapId: string;
+    position: {
+        x: number;
+        y: number;
+        z: number;
+    };
+    direction: 'north' | 'south' | 'east' | 'west';
 }
 
 export const MAX_CHARACTERS_PER_ACCOUNT = 4;

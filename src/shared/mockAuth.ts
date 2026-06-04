@@ -3,6 +3,7 @@ import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { OUTFIT_PRESETS } from '../game-data/default/outfits';
+import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
 
 const SESSION_KEY = 'game2d_mock_session';
 const PROFILE_KEY = 'game2d_mock_profile';
@@ -23,22 +24,28 @@ function readChars(): CharacterRow[] {
         const raw = localStorage.getItem(CHARS_KEY);
         const parsed = raw ? (JSON.parse(raw) as CharacterRow[]) : [];
         return parsed.map(c => {
-            const vocation = c.vocation ?? (c.outfitConfig as any).vocation ?? 'knight';
-            const gender = c.gender ?? (c.outfitConfig as any).gender ?? 'male';
+            const config = c.outfitConfig as any || {};
+            const vocation = c.vocation ?? config.vocation ?? 'knight';
+            const gender = c.gender ?? config.gender ?? 'male';
             return {
                 ...c,
                 vocation,
-                level: c.level ?? (c.outfitConfig as any).level ?? 1,
-                experience: c.experience ?? (c.outfitConfig as any).experience ?? 0,
+                level: c.level ?? config.level ?? 1,
+                experience: c.experience ?? config.experience ?? 0,
                 gender,
-                appearance: c.appearance ?? (c.outfitConfig as any).appearance ?? {
+                appearance: c.appearance ?? config.appearance ?? {
                     gender: gender as 'male' | 'female',
                     vocation: vocation as 'knight' | 'mage' | 'archer',
                     outfitId: `default_${vocation}_${gender}`,
                 },
+                gameId: c.gameId ?? config.gameId ?? DEFAULT_GAME_CONFIG.id,
+                mapId: c.spawnMapId || c.mapId || config.mapId || DEFAULT_GAME_CONFIG.start.mapId,
+                position: c.position ?? config.position ?? { ...DEFAULT_GAME_CONFIG.start.position },
+                direction: c.direction ?? config.direction ?? DEFAULT_GAME_CONFIG.start.direction,
             };
         });
-    } catch {
+    } catch (err) {
+        console.error("Erro ao ler personagens do mockAuth:", err);
         return [];
     }
 }
@@ -145,6 +152,10 @@ export function mockCreateCharacter(
             experience: 0,
             gender,
             appearance,
+            gameId: DEFAULT_GAME_CONFIG.id,
+            mapId: spawnMapId,
+            position: { ...DEFAULT_GAME_CONFIG.start.position },
+            direction: DEFAULT_GAME_CONFIG.start.direction,
         } as any,
         spawnMapId,
         createdAt: new Date().toISOString(),
@@ -154,6 +165,10 @@ export function mockCreateCharacter(
         experience: 0,
         gender,
         appearance,
+        gameId: DEFAULT_GAME_CONFIG.id,
+        mapId: spawnMapId,
+        position: { ...DEFAULT_GAME_CONFIG.start.position },
+        direction: DEFAULT_GAME_CONFIG.start.direction,
     };
     chars.push(row);
     writeChars(chars);

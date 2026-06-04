@@ -60,7 +60,7 @@ document.getElementById('next2')?.addEventListener('click', () => {
 document.getElementById('confirmCreate')?.addEventListener('click', async () => {
     errEl.hidden = true;
     try {
-        await createCharacter(session.userId, charName, presetId, 'rookgaard', selectedGender);
+        await createCharacter(session.userId, charName, presetId, undefined, selectedGender);
         track('character_created', { preset: presetId, gender: selectedGender });
         location.href = '/characters.html';
     } catch (err) {
