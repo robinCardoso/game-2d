@@ -13,6 +13,7 @@ export interface BorderSetManifestEntry {
     calibration: Omit<BorderSetCalibrationPayload, 'borderSetCells'>;
     cells: BorderSetCellAssignment[];
     masks: Record<string, string>;
+    walkable?: boolean;
 }
 
 export interface SaveBorderSetPayload {
@@ -23,6 +24,7 @@ export interface SaveBorderSetPayload {
     sheetBase64: string;
     calibration: BorderSetCalibrationPayload;
     masks: BorderMaskExport[];
+    walkable?: boolean;
 }
 
 export async function fetchBorderSets(): Promise<BorderSetManifestEntry[]> {

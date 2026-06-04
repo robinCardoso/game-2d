@@ -3,7 +3,6 @@ import { requireAuth } from '../shared/authGuard';
 import { createCharacter, validateCharacterName } from '../shared/characterStore';
 import { track } from '../shared/analytics';
 import type { Gender, VocationId } from '../../shared/types/character';
-import { OUTFIT_PRESETS } from '../game-data/default/outfits';
 
 const session = await requireAuth();
 const errEl = document.getElementById('createError') as HTMLElement;
@@ -12,19 +11,36 @@ const presetSelect = document.getElementById('preset') as HTMLSelectElement;
 const genderSelect = document.getElementById('gender') as HTMLSelectElement;
 const presetPreview = document.getElementById('presetPreview') as HTMLImageElement;
 
+let outfitPresets: any[] = [];
+try {
+    const response = await fetch('/outfit_presets.json');
+    if (response.ok) {
+        outfitPresets = await response.json();
+    }
+} catch (e) {
+    console.error('Falha ao carregar outfit presets:', e);
+}
+
 function updatePreview(): void {
     if (presetPreview && presetSelect && genderSelect) {
         const vocation = presetSelect.value as VocationId;
         const gender = genderSelect.value as Gender;
-        const preset = OUTFIT_PRESETS[vocation];
+        const preset = outfitPresets.find(
+            (p) => p.vocationId === vocation && p.gender === gender && p.showInCreation !== false
+        );
         if (preset) {
-            presetPreview.src = `/${preset.sprites[gender]?.spriteSheetUrl || ''}`;
+            presetPreview.src = `/${preset.spriteSheetUrl || ''}`;
+        } else {
+            presetPreview.src = `/tiles/characters/vocations/${gender}/${vocation}.png`;
         }
     }
 }
 
 presetSelect?.addEventListener('change', updatePreview);
 genderSelect?.addEventListener('change', updatePreview);
+
+// Chama uma vez para inicializar o preview correto
+updatePreview();
 
 let charName = '';
 let presetId = 'knight';

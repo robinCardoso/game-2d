@@ -346,9 +346,28 @@
                     </div>
                     <label class="flyout-label">Descrição</label>
                     <input type="text" id="charSpawnDescription" placeholder="Ex: Rato pequeno da caverna" style="width: 100%; background: #1a1d24; color: #fff; border: 1px solid #3f4452; border-radius: 4px; padding: 4px 8px; margin-bottom: 6px; font-size: 11px;" />
+                  </div>
+
+                  <div id="charPlayerMetaSection" style="display: none; margin-bottom: 12px; padding: 8px; border: 1px solid #3f4452; border-radius: 6px; background: #111318;">
+                    <label class="flyout-label">Vínculo com o Jogo (Player)</label>
+                    <div class="info-row" style="margin-bottom: 6px;">
+                      <span class="info-label">Vocação</span>
+                      <select id="charPlayerVocation" style="width: 90px; background: #1a1d24; color: #fff; border: 1px solid #3f4452; border-radius: 4px; padding: 2px 4px; font-size: 11px;">
+                        <option value="knight" selected>Knight</option>
+                        <option value="mage">Mage</option>
+                        <option value="archer">Archer</option>
+                      </select>
+                    </div>
+                    <div class="info-row" style="margin-bottom: 6px;">
+                      <span class="info-label">Gênero</span>
+                      <select id="charPlayerGender" style="width: 90px; background: #1a1d24; color: #fff; border: 1px solid #3f4452; border-radius: 4px; padding: 2px 4px; font-size: 11px;">
+                        <option value="male" selected>Masculino</option>
+                        <option value="female">Feminino</option>
+                      </select>
+                    </div>
                     <label class="check-row" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; font-size: 11px; color: var(--text-dim);">
-                      <span>Registrar na paleta SPWN ao salvar</span>
-                      <input type="checkbox" id="charRegisterInPalette" checked style="accent-color: var(--accent-color);" />
+                      <span>Disponível na criação de personagem</span>
+                      <input type="checkbox" id="charPlayerShowInCreation" checked style="accent-color: var(--accent-color);" />
                     </label>
                   </div>
 
@@ -511,6 +530,10 @@
                     </select>
                     <label class="flyout-label" style="font-size: 10px; font-weight: normal; opacity: 0.85;">Pasta destino</label>
                     <input type="text" id="mapSpriteBorderCategoryInput" value="terrain/borders/grass_edges" placeholder="terrain/borders/grass_edges" style="width: 100%; background: #111318; color: #fff; border: 1px solid #3f4452; border-radius: 6px; padding: 6px 10px; font-size: 11px; margin-bottom: 8px;" />
+                    <label class="check-row" style="margin-top: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: var(--text-dim); font-size: 11px;">
+                      <span>Caminhável (andável)</span>
+                      <input type="checkbox" id="mapSpriteBorderWalkableToggle" checked style="accent-color: var(--accent-color); cursor: pointer;" />
+                    </label>
                     <p class="flyout-hint" style="margin: 0;">Máscaras genéricas: aplicam-se automaticamente sobre <strong>qualquer chão</strong> ao lado da grama pintada. Não é preciso escolher pedra, areia ou terra.</p>
                   </div>
 

@@ -131,6 +131,7 @@ function borderSetManifestToListEntry(setId: string, entry: Record<string, unkno
     calibration: entry.calibration ?? {},
     cells: entry.cells ?? [],
     masks: entry.masks ?? {},
+    walkable: entry.walkable !== false, // Padrão true
   };
 }
 
@@ -785,6 +786,24 @@ export default defineConfig({
                 }
               }
 
+              // Remove do arquivo de outfit presets também
+              const outfitPresetsPath = path.resolve(__dirname, 'public/outfit_presets.json');
+              if (fs.existsSync(outfitPresetsPath)) {
+                try {
+                  const presets = JSON.parse(fs.readFileSync(outfitPresetsPath, 'utf-8'));
+                  if (Array.isArray(presets)) {
+                    const presetId = relativePath.split('/').pop()?.replace(/\.json$/, '');
+                    if (presetId) {
+                      const filtered = presets.filter((p) => !p || p.id !== presetId);
+                      fs.writeFileSync(outfitPresetsPath, JSON.stringify(filtered, null, 2) + '\n');
+                      console.log(`[Vite Backend] Outfit preset removido: ${presetId}`);
+                    }
+                  }
+                } catch (e) {
+                  console.warn('[Vite Backend] Erro ao atualizar outfit_presets.json:', e);
+                }
+              }
+
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
               res.end(
@@ -1060,13 +1079,15 @@ export default defineConfig({
                   allProperties = JSON.parse(fs.readFileSync(propertiesPath, 'utf-8'));
                 }
 
+                const isWalkable = parsed.walkable !== false;
+
                 allProperties[sheetFile] = {
                   nameOverride: `${label} (spritesheet)`,
                   assetType: 'border',
                   tileRole: 'border_sheet',
                   borderSetId: setId,
                   paletteCategory: 'border',
-                  walkable: true,
+                  walkable: isWalkable,
                   speedModifier: 1.0,
                   isStair: false,
                 };
@@ -1099,7 +1120,7 @@ export default defineConfig({
                     borderMask: maskNum,
                     borderSetId: setId,
                     paletteCategory: 'border',
-                    walkable: true,
+                    walkable: isWalkable,
                     speedModifier: 1.0,
                     isStair: false,
                   };
@@ -1117,11 +1138,12 @@ export default defineConfig({
                   calibration: calibrationFields,
                   cells,
                   masks: masksMap,
+                  walkable: isWalkable,
                 };
                 writeAutoBorderManifest(manifest);
                 fs.writeFileSync(propertiesPath, JSON.stringify(allProperties, null, 2));
 
-                console.log(`[Vite Backend] Conjunto auto-borda salvo: ${setId} (${Object.keys(masksMap).length} máscaras)`);
+                console.log(`[Vite Backend] Conjunto auto-borda salvo: ${setId} (${Object.keys(masksMap).length} máscaras, walkable=${isWalkable})`);
 
                 res.statusCode = 200;
                 res.setHeader('Content-Type', 'application/json');
@@ -1532,15 +1554,57 @@ export default defineConfig({
                 else presets.push(sanitized);
                 fs.writeFileSync(presetsPath, JSON.stringify(presets, null, 2) + '\n');
                 console.log(`[Vite Backend] Creature preset upserted: ${sanitized.name}`);
-                res.statusCode = 200;
-                res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ success: true, preset: sanitized }));
+                 res.statusCode = 200;
+                 res.setHeader('Content-Type', 'application/json');
+                 res.end(JSON.stringify({ success: true, preset: sanitized }));
               } catch (err: unknown) {
                 const message = err instanceof Error ? err.message : String(err);
                 console.error('[Vite Backend] Erro ao upsert creature preset:', err);
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ error: message }));
+              }
+            });
+          } else if (req.url === '/api/upsert-outfit-preset' && req.method === 'POST') {
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+              try {
+                const entry = JSON.parse(body || '{}');
+                if (!entry.id || !entry.name || !entry.vocationId || !entry.gender || !entry.spriteSheetUrl) {
+                  throw new Error('Campos id, name, vocationId, gender e spriteSheetUrl são obrigatórios.');
+                }
+                const presetsPath = path.resolve(__dirname, 'public/outfit_presets.json');
+                let presets: any[] = [];
+                if (fs.existsSync(presetsPath)) {
+                  try {
+                    presets = JSON.parse(fs.readFileSync(presetsPath, 'utf-8'));
+                  } catch (e) {}
+                }
+                const sanitized = {
+                  id: entry.id,
+                  name: entry.name,
+                  vocationId: entry.vocationId,
+                  gender: entry.gender,
+                  spriteSheetUrl: entry.spriteSheetUrl,
+                  showInCreation: entry.showInCreation !== false
+                };
+                const idx = presets.findIndex(p => p && p.id === sanitized.id);
+                if (idx >= 0) {
+                  presets[idx] = sanitized;
+                } else {
+                  presets.push(sanitized);
+                }
+                fs.writeFileSync(presetsPath, JSON.stringify(presets, null, 2) + '\n');
+                console.log(`[Vite Backend] Outfit preset upserted: ${sanitized.id}`);
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, preset: sanitized }));
+              } catch (err: any) {
+                console.error('[Vite Backend] Erro ao upsert outfit preset:', err);
+                res.statusCode = 500;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: err.message }));
               }
             });
           } else {

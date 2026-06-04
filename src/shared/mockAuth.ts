@@ -1,8 +1,7 @@
 import type { AuthSession, CharacterRow, UserProfile } from './types';
-import type { Gender, VocationId } from '../../shared/types/character';
+import type { Gender } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
-import { OUTFIT_PRESETS } from '../game-data/default/outfits';
 import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
 
 const SESSION_KEY = 'game2d_mock_session';
@@ -143,23 +142,38 @@ export function mockGetCharacter(id: string, accountId: string): CharacterRow | 
     return mockListCharacters(accountId).find((c) => c.id === id) ?? null;
 }
 
-export function mockCreateCharacter(
+export async function mockCreateCharacter(
     accountId: string,
     name: string,
     presetId: string,
     spawnMapId: string,
     gender: Gender = 'male'
-): CharacterRow {
+): Promise<CharacterRow> {
     const chars = readChars();
     const active = chars.filter((c) => c.accountId === accountId && !c.deletedAt);
     if (active.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
-    const preset = OUTFIT_PRESETS[presetId as VocationId] || OUTFIT_PRESETS.knight;
-    const spriteConfig = preset.sprites[gender];
+    
+    let spriteSheetUrl = `tiles/characters/vocations/${gender}/${presetId}.png`;
+    let displayName = name;
+    try {
+        const response = await fetch('/outfit_presets.json');
+        if (response.ok) {
+            const presets = await response.json();
+            const match = presets.find((p: any) => p.vocationId === presetId && p.gender === gender);
+            if (match) {
+                spriteSheetUrl = match.spriteSheetUrl;
+                displayName = match.name;
+            }
+        }
+    } catch (e) {
+        console.warn('[mockAuth] Falha ao carregar outfit_presets.json:', e);
+    }
+
     const base = createDefaultCharacterConfig();
-    base.name = spriteConfig.name || name;
-    base.spriteSheetUrl = spriteConfig.spriteSheetUrl || `tiles/characters/vocations/${gender}/${presetId}.png`;
+    base.name = displayName;
+    base.spriteSheetUrl = spriteSheetUrl;
 
     const appearance = {
         gender: gender as 'male' | 'female',

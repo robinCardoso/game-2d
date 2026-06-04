@@ -476,6 +476,20 @@ export function openCharacterCalibrator(
             updateMultiSelectUI();
         } else if (isMapMode) {
             toast.info(`Frame selecionado: col ${col + 1}, linha ${row + 1}`);
+        } else if (!isBorderSetMode) {
+            // Modo personagem (character anim calibrator)
+            // Se layout for vertical, a animação varia nas linhas (rows) e a linha da animação é a coluna (col)
+            // Se for horizontal, a animação varia nas colunas (cols) e a linha da animação é a linha (row)
+            if (localSheetLayout === 'vertical') {
+                calAnimRowInput.value = col.toString();
+                calAnimStartFrameInput.value = row.toString();
+            } else {
+                calAnimRowInput.value = row.toString();
+                calAnimStartFrameInput.value = col.toString();
+            }
+            calAnimRowInput.dispatchEvent(new Event('input'));
+            calAnimStartFrameInput.dispatchEvent(new Event('input'));
+            toast.info(`Selecionado frame da animação: linha ${calAnimRowInput.value}, frame inicial ${calAnimStartFrameInput.value}`);
         }
 
         renderCalibrator();

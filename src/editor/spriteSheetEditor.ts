@@ -245,6 +245,10 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
             charServerLabelEl.textContent = profile.id === 'player' ? 'Carregar do Servidor' : 'Carregar existente';
         }
         if (creatureMetaSectionEl) creatureMetaSectionEl.style.display = profile.creatureType ? 'block' : 'none';
+        
+        const playerMetaSectionEl = document.getElementById('charPlayerMetaSection');
+        if (playerMetaSectionEl) playerMetaSectionEl.style.display = profile.id === 'player' ? 'block' : 'none';
+
         if (charCategoryInputEl && !charCategoryInputEl.value.trim()) charCategoryInputEl.value = profile.defaultCategory;
         if (visualSizeEl && profile.defaultVisualSize) visualSizeEl.value = profile.defaultVisualSize;
         if (spawnColorEl && profile.defaultColor) spawnColorEl.value = profile.defaultColor;
@@ -301,6 +305,13 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         if (charNameInputEl) charNameInputEl.value = config.name || '';
         if (charCategoryInputEl) charCategoryInputEl.value = config.category || getProfile().defaultCategory;
         if (sheetLayoutEl) sheetLayoutEl.value = config.sheetLayout || 'horizontal';
+
+        const playerVocationEl = document.getElementById('charPlayerVocation') as HTMLSelectElement | null;
+        const playerGenderEl = document.getElementById('charPlayerGender') as HTMLSelectElement | null;
+        const playerShowInCreationEl = document.getElementById('charPlayerShowInCreation') as HTMLInputElement | null;
+        if (playerVocationEl) playerVocationEl.value = (config as any).vocation || 'knight';
+        if (playerGenderEl) playerGenderEl.value = (config as any).gender || 'male';
+        if (playerShowInCreationEl) playerShowInCreationEl.checked = (config as any).showInCreation !== false;
     }
 
     function syncUIToController(): void {
@@ -331,6 +342,14 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         if (charNameInputEl) config.name = charNameInputEl.value;
         if (charCategoryInputEl) config.category = charCategoryInputEl.value;
         if (sheetLayoutEl) config.sheetLayout = sheetLayoutEl.value as 'horizontal' | 'vertical';
+
+        const playerVocationEl = document.getElementById('charPlayerVocation') as HTMLSelectElement | null;
+        const playerGenderEl = document.getElementById('charPlayerGender') as HTMLSelectElement | null;
+        const playerShowInCreationEl = document.getElementById('charPlayerShowInCreation') as HTMLInputElement | null;
+        if (playerVocationEl) (config as any).vocation = playerVocationEl.value;
+        if (playerGenderEl) (config as any).gender = playerGenderEl.value;
+        if (playerShowInCreationEl) (config as any).showInCreation = playerShowInCreationEl.checked;
+
         saveConfigToLocalStorage();
     }
 
@@ -381,6 +400,26 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
             } catch (catalogErr) {
                 console.warn('[SpriteSheetEditor] Catálogo não atualizado:', catalogErr);
             }
+
+            if (activeProfileId === 'player') {
+                try {
+                    await fetch('/api/upsert-outfit-preset', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: result.name.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+                            name: result.name,
+                            vocationId: (configCopy as any).vocation || 'knight',
+                            gender: (configCopy as any).gender || 'male',
+                            spriteSheetUrl: result.spriteSheetUrl,
+                            showInCreation: (configCopy as any).showInCreation !== false
+                        })
+                    });
+                } catch (presetErr) {
+                    console.warn('[SpriteSheetEditor] Erro ao salvar preset de outfit:', presetErr);
+                }
+            }
+
             if (showToastOnSuccess) {
                 const labels = { player: 'Personagem', npc: 'NPC', monster: 'Mob' };
                 toast.success(`${labels[getProfile().id]} "${result.name}" salvo!`);

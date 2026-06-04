@@ -765,6 +765,11 @@ export function initMapSpriteEditor() {
         if (fillTerrainInput) fillTerrainInput.value = set.fillTerrain;
         if (borderCategoryInput) borderCategoryInput.value = set.category;
 
+        const borderWalkableToggle = document.getElementById('mapSpriteBorderWalkableToggle') as HTMLInputElement | null;
+        if (borderWalkableToggle) {
+            borderWalkableToggle.checked = set.walkable !== false;
+        }
+
         const cal = set.calibration;
         const savedCells = set.cells ?? [];
         const slotGrid = inferBorderSlotGrid(savedCells);
@@ -1170,6 +1175,8 @@ export function initMapSpriteEditor() {
             if (!ok) return;
         }
 
+        const borderWalkableToggle = document.getElementById('mapSpriteBorderWalkableToggle') as HTMLInputElement | null;
+
         try {
             (saveBorderSetBtn as HTMLButtonElement).disabled = true;
             const originalText = saveBorderSetBtn!.innerText;
@@ -1183,6 +1190,7 @@ export function initMapSpriteEditor() {
                 sheetBase64: processedImage.src,
                 calibration: pendingBorderSetCalibration,
                 masks: maskExports,
+                walkable: borderWalkableToggle ? borderWalkableToggle.checked : true,
             });
 
             toast.success(
