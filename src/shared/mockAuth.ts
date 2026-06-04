@@ -1,7 +1,8 @@
 import type { AuthSession, CharacterRow, UserProfile } from './types';
-import type { Gender } from '../../shared/types/character';
+import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
+import { OUTFIT_PRESETS } from '../game-data/default/outfits';
 
 const SESSION_KEY = 'game2d_mock_session';
 const PROFILE_KEY = 'game2d_mock_profile';
@@ -121,11 +122,11 @@ export function mockCreateCharacter(
     if (active.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
+    const preset = OUTFIT_PRESETS[presetId as VocationId] || OUTFIT_PRESETS.knight;
+    const spriteConfig = preset.sprites[gender];
     const base = createDefaultCharacterConfig();
-    base.name = name;
-    
-    // Default fallback or resolve preset details
-    base.spriteSheetUrl = `tiles/characters/${presetId}.png`;
+    base.name = spriteConfig.name || name;
+    base.spriteSheetUrl = spriteConfig.spriteSheetUrl || `tiles/characters/vocations/${gender}/${presetId}.png`;
 
     const appearance = {
         gender: gender as 'male' | 'female',

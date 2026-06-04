@@ -9,7 +9,7 @@ import {
 } from './mockAuth';
 import { getSupabase, isSupabaseConfigured, mapDbCharacter, type DbCharacter } from './supabaseClient';
 import type { CharacterRow } from './types';
-import type { Gender } from '../../shared/types/character';
+import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { OUTFIT_PRESETS } from '../game-data/default/outfits';
@@ -60,10 +60,11 @@ export async function createCharacter(
     if (existing.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
-    const preset = OUTFIT_PRESETS[presetId] || OUTFIT_PRESETS.knight;
+    const preset = OUTFIT_PRESETS[presetId as VocationId] || OUTFIT_PRESETS.knight;
+    const spriteConfig = preset.sprites[gender];
     const base = createDefaultCharacterConfig();
-    base.name = name;
-    base.spriteSheetUrl = preset.config.spriteSheetUrl || 'tiles/characters/knight.png';
+    base.name = spriteConfig.name || name;
+    base.spriteSheetUrl = spriteConfig.spriteSheetUrl || 'tiles/characters/vocations/male/knight.png';
 
     const appearance = {
         gender: gender as 'male' | 'female',
