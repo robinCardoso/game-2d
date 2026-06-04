@@ -33,7 +33,7 @@ import { resolveFullStepDuration } from '../character/characterMovement';
 import { loadMapFile } from '../engine/worldLoader';
 import { createEmptyLayerMap, getLayerCell, type LayerMap } from '../engine/mapPaintLayers';
 import { collectBorderDrawTileIdsCached, buildBorderMaskTileIndex, invalidateBorderDrawCache } from '../engine/autoBorderEngine';
-import { MAP_REGISTRY } from '../engine/mapRegistry';
+import { DEFAULT_GAME_DATA } from '../game-data/default';
 import type { PortalData } from '../engine/types';
 import {
     captureOverworldReturnIfNeeded,
@@ -148,7 +148,7 @@ function resetPortalTriggerState(): void {
 
 function updateActiveMapHud(): void {
     if (!statusMapNameEl) return;
-    const entry = currentMapId ? MAP_REGISTRY.find((m) => m.id === currentMapId) : undefined;
+    const entry = currentMapId ? getMapById(currentMapId) : undefined;
     const baseName = entry?.name ?? currentMapId ?? '—';
     if (isInsideMapInstance()) {
         statusMapNameEl.textContent = `${baseName} · #${getActiveInstanceShortLabel()}`;
@@ -167,7 +167,7 @@ function respawnEntities(): void {
 }
 
 function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
-    const mapEntry = loaded.mapId ? MAP_REGISTRY.find((m) => m.id === loaded.mapId) : undefined;
+    const mapEntry = loaded.mapId ? getMapById(loaded.mapId) : undefined;
     if (!mapEntry?.instanced) {
         disposeActiveMapInstance();
         clearOverworldReturnContext();
@@ -195,11 +195,15 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     invalidateBorderDrawCache();
 }
 
+function getMapById(mapId: string) {
+    return DEFAULT_GAME_DATA.maps.find((map) => map.id === mapId);
+}
+
 let activeCharacter: CharacterRow | null = null;
 
 async function saveCurrentCharacterLocation(): Promise<void> {
     if (!activeCharacter || !currentMapId) return;
-    const entry = MAP_REGISTRY.find((m) => m.id === currentMapId);
+    const entry = getMapById(currentMapId);
     if (!entry || entry.instanced) {
         return;
     }
@@ -263,11 +267,18 @@ async function transitionToMap(
     overrideSpawn?: { x: number; y: number; z: number }
 ): Promise<void> {
     if (isTransitioningMap) return;
-    const entry = MAP_REGISTRY.find((m) => m.id === targetMapId);
+    const entry = getMapById(targetMapId);
     if (!entry) return;
     isTransitioningMap = true;
     showLoading(`Carregando ${entry.name}…`);
     try {
+        const mapEntry = {
+            id: entry.id,
+            name: entry.name,
+            file: entry.path.startsWith('/') ? entry.path.substring(1) : entry.path,
+            size: 256,
+            instanced: entry.instanced || false,
+        };
         if (entry.instanced) {
             captureOverworldReturnIfNeeded(currentMapId, {
                 x: player.tileX,
@@ -275,13 +286,13 @@ async function transitionToMap(
                 z: player.worldZ,
             });
             disposeActiveMapInstance();
-            const template = await loadMapFile(entry, TILE_TYPES);
+            const template = await loadMapFile(mapEntry, TILE_TYPES);
             const { data } = createMapInstanceFromTemplate(entry.id, template);
             applyLoadedMap({ ...data, mapId: entry.id, spawn: overrideSpawn ?? data.spawn });
         } else {
             disposeActiveMapInstance();
             clearOverworldReturnContext();
-            const loaded = await loadMapFile(entry, TILE_TYPES);
+            const loaded = await loadMapFile(mapEntry, TILE_TYPES);
             applyLoadedMap({
                 ...loaded,
                 mapId: loaded.mapId ?? entry.id,
@@ -381,7 +392,7 @@ function update(): void {
                 p.tileY === player.tileY &&
                 p.tileZ === player.worldZ
         );
-        if (portal && MAP_REGISTRY.some((m) => m.id === portal.targetMapId)) {
+        if (portal && DEFAULT_GAME_DATA.maps.some((m) => m.id === portal.targetMapId)) {
             void transitionToMap(portal.targetMapId, {
                 x: portal.targetX,
                 y: portal.targetY,
@@ -597,15 +608,23 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     }
 
     const entry =
-        MAP_REGISTRY.find((m) => m.id === character.mapId) ??
-        MAP_REGISTRY.find((m) => m.id === character.spawnMapId) ??
-        MAP_REGISTRY[0];
+        getMapById(character.mapId) ??
+        getMapById(character.spawnMapId) ??
+        DEFAULT_GAME_DATA.maps[0];
     if (!entry) throw new Error('Mapa inicial não encontrado.');
+
+    const mapEntry = {
+        id: entry.id,
+        name: entry.name,
+        file: entry.path.startsWith('/') ? entry.path.substring(1) : entry.path,
+        size: 256,
+        instanced: entry.instanced || false,
+    };
 
     showLoading('Carregando mundo…');
     await loadCreaturePresets();
     TILE_TYPES = await buildTileRegistryAsync();
-    const loaded = await loadMapFile(entry, TILE_TYPES);
+    const loaded = await loadMapFile(mapEntry, TILE_TYPES);
     applyLoadedMap({ ...loaded, mapId: loaded.mapId ?? entry.id });
 
     window.addEventListener('keydown', (e) => {
