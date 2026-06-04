@@ -34,7 +34,6 @@ import { loadMapFile } from '../engine/worldLoader';
 import { createEmptyLayerMap, getLayerCell, type LayerMap } from '../engine/mapPaintLayers';
 import { collectBorderDrawTileIdsCached, buildBorderMaskTileIndex, invalidateBorderDrawCache } from '../engine/autoBorderEngine';
 import { DEFAULT_GAME_DATA } from '../game-data/default';
-import type { PortalData } from '../engine/types';
 import {
     captureOverworldReturnIfNeeded,
     clearOverworldReturnContext,
@@ -60,7 +59,6 @@ let grassOverlayMap: LayerMap = createEmptyLayerMap();
 let borderOverlayMap: LayerMap = createEmptyLayerMap();
 let itemsOverlayMap: LayerMap = createEmptyLayerMap();
 let worldSpawns: import('../engine/types').CreatureSpawn[] = [];
-let worldPortals: PortalData[] = [];
 let currentMapId: string | undefined;
 let isTransitioningMap = false;
 let portalCooldownUntil = 0;
@@ -180,8 +178,6 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     setActiveMapSize(mapSize);
     worldSpawns.length = 0;
     worldSpawns.push(...(loaded.spawns || []));
-    worldPortals.length = 0;
-    worldPortals.push(...(loaded.portals || []));
     currentMapId = loaded.mapId;
     player.tileX = loaded.spawn.x;
     player.tileY = loaded.spawn.y;
@@ -197,6 +193,15 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
 
 function getMapById(mapId: string) {
     return DEFAULT_GAME_DATA.maps.find((map) => map.id === mapId);
+}
+
+function getPortalAt(mapId: string, position: { x: number; y: number; z: number }) {
+    return DEFAULT_GAME_DATA.portals.find((portal) =>
+        portal.fromMapId === mapId &&
+        portal.from.x === position.x &&
+        portal.from.y === position.y &&
+        portal.from.z === position.z
+    );
 }
 
 let activeCharacter: CharacterRow | null = null;
@@ -383,20 +388,19 @@ function update(): void {
     if (
         enteredNewTile &&
         !isTransitioningMap &&
-        worldPortals.length > 0 &&
-        performance.now() >= portalCooldownUntil
+        performance.now() >= portalCooldownUntil &&
+        currentMapId
     ) {
-        const portal = worldPortals.find(
-            (p) =>
-                p.tileX === player.tileX &&
-                p.tileY === player.tileY &&
-                p.tileZ === player.worldZ
-        );
-        if (portal && DEFAULT_GAME_DATA.maps.some((m) => m.id === portal.targetMapId)) {
-            void transitionToMap(portal.targetMapId, {
-                x: portal.targetX,
-                y: portal.targetY,
-                z: portal.targetZ,
+        const portal = getPortalAt(currentMapId, {
+            x: player.tileX,
+            y: player.tileY,
+            z: player.worldZ,
+        });
+        if (portal && DEFAULT_GAME_DATA.maps.some((m) => m.id === portal.toMapId)) {
+            void transitionToMap(portal.toMapId, {
+                x: portal.to.x,
+                y: portal.to.y,
+                z: portal.to.z,
             });
         }
     }
@@ -478,16 +482,18 @@ function draw(): void {
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
                 drawLayerTile(getLayerCell(itemsOverlayMap, z, x, y), x, y);
-                const portal = worldPortals.find((p) => p.tileX === x && p.tileY === y && p.tileZ === z);
-                if (portal && z === player.worldZ) {
-                    const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-                    ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
-                    ctx.fillRect(
-                        x * TILE_SIZE_SCREEN - camera.x,
-                        y * TILE_SIZE_SCREEN - camera.y,
-                        TILE_SIZE_SCREEN,
-                        TILE_SIZE_SCREEN
-                    );
+                if (currentMapId && z === player.worldZ) {
+                    const portal = getPortalAt(currentMapId, { x, y, z });
+                    if (portal) {
+                        const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
+                        ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
+                        ctx.fillRect(
+                            x * TILE_SIZE_SCREEN - camera.x,
+                            y * TILE_SIZE_SCREEN - camera.y,
+                            TILE_SIZE_SCREEN,
+                            TILE_SIZE_SCREEN
+                        );
+                    }
                 }
             }
         }
