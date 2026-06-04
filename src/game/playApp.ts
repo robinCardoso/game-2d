@@ -225,6 +225,22 @@ async function saveCurrentCharacterLocation(): Promise<void> {
     }
 }
 
+let locationAutosaveStarted = false;
+
+function setupLocationAutosave(): void {
+    if (locationAutosaveStarted) return;
+    locationAutosaveStarted = true;
+
+    window.addEventListener('beforeunload', () => {
+        void saveCurrentCharacterLocation();
+    });
+
+    window.setInterval(() => {
+        void saveCurrentCharacterLocation();
+    }, 10000);
+}
+
+
 async function transitionToMap(
     targetMapId: string,
     overrideSpawn?: { x: number; y: number; z: number }
@@ -585,13 +601,7 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     resize();
     hideLoading();
 
-    window.addEventListener('beforeunload', () => {
-        void saveCurrentCharacterLocation();
-    });
-
-    setInterval(() => {
-        void saveCurrentCharacterLocation();
-    }, 10000);
+    setupLocationAutosave();
 
     setupNetwork(character, accountId);
     loop();
