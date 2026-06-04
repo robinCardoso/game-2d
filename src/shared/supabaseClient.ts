@@ -54,7 +54,7 @@ export function mapDbCharacter(row: DbCharacter): CharacterRow {
             outfitId: `default_${config.vocation ?? 'knight'}_${config.gender ?? 'male'}`,
         },
         gameId: config.gameId ?? DEFAULT_GAME_CONFIG.id,
-        mapId: row.spawn_map_id || config.mapId || DEFAULT_GAME_CONFIG.start.mapId,
+        mapId: config.mapId || row.spawn_map_id || DEFAULT_GAME_CONFIG.start.mapId,
         position: config.position ?? { ...DEFAULT_GAME_CONFIG.start.position },
         direction: config.direction ?? DEFAULT_GAME_CONFIG.start.direction,
     };

@@ -39,7 +39,7 @@ function readChars(): CharacterRow[] {
                     outfitId: `default_${vocation}_${gender}`,
                 },
                 gameId: c.gameId ?? config.gameId ?? DEFAULT_GAME_CONFIG.id,
-                mapId: c.spawnMapId || c.mapId || config.mapId || DEFAULT_GAME_CONFIG.start.mapId,
+                mapId: c.mapId || config.mapId || c.spawnMapId || DEFAULT_GAME_CONFIG.start.mapId,
                 position: c.position ?? config.position ?? { ...DEFAULT_GAME_CONFIG.start.position },
                 direction: c.direction ?? config.direction ?? DEFAULT_GAME_CONFIG.start.direction,
             };

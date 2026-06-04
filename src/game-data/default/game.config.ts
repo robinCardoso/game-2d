@@ -3,7 +3,7 @@ export const DEFAULT_GAME_CONFIG = {
   name: 'Game 2D Default',
 
   start: {
-    mapId: 'main-town',
+    mapId: 'rookgaard',
     position: {
       x: 10,
       y: 10,
