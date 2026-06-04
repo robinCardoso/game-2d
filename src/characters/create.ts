@@ -100,18 +100,21 @@ document.getElementById('next1')?.addEventListener('click', () => {
 });
 
 document.getElementById('next2')?.addEventListener('click', () => {
+    errEl.hidden = true;
     selectedVocation = presetSelect.value as VocationId;
     selectedGender = genderSelect.value as Gender;
     selectedOutfitId = outfitSelect.value;
 
     const outfit = findOutfitPreset(outfitPresets, selectedOutfitId);
-    if (outfit) {
-        selectedSpriteSheetUrl = outfit.spriteSheetUrl;
-    } else {
-        selectedSpriteSheetUrl = `tiles/characters/vocations/${selectedGender}/${selectedVocation}.png`;
+    if (!outfit) {
+        errEl.textContent = 'Selecione um visual válido.';
+        errEl.hidden = false;
+        return;
     }
 
-    const outfitLabel = outfit ? outfit.name : selectedOutfitId;
+    selectedSpriteSheetUrl = outfit.spriteSheetUrl;
+
+    const outfitLabel = outfit.name;
     (document.getElementById('summaryName') as HTMLElement).textContent = `${charName} (${selectedVocation.toUpperCase()}, ${selectedGender.toUpperCase()}, Visual: ${outfitLabel})`;
     showStep(3);
 });
