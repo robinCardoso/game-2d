@@ -25,6 +25,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Quinas Internas (L)** | Visualização das quinas L em faixa plana 4x1 sem indicação espacial de onde ficava a grama | Alteração para uma grade 3x3 simétrica e intuitiva (cantos de pedra, centro/cardinais de grama) |
 | **Movimentação de Sprites** | Trocar categoria/subpasta de um sprite existente não movia a imagem física `.png` de lugar no servidor | API detecta URL local no `spriteBase64` e move/copia o arquivo físico automaticamente no backend |
 | **Fatiamento Customizado** | O motor de jogo ignorava offsets (`offsetX`, `offsetY`, `gap`) ao fatiar variant strips horizontais/verticais | `tileRegistry.ts` aprimorado para respeitar os offsets e tamanhos customizados de `tile_properties.json` |
+| **Auto-borda Dinâmico** | O sistema só ativava auto-borda para o grupo de variação estático `grass` | `autoBorderUi.ts` busca dinamicamente conjuntos cujo `fillTerrain` corresponda ao `variantGroup` selecionado |
 
 ---
 
@@ -346,7 +347,16 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 14. Referências
+## 14. Vínculo Dinâmico de Auto-borda por Grupo (2026-06-04)
+
+### Seleção Automática do Conjunto ao Selecionar Pincel 🎲
+- **Arquivo:** `src/editor/autoBorderUi.ts`
+- **Problema:** A seleção de pincéis de grama ativava o auto-borda de forma estática, vinculando-se unicamente ao grupo `"grass"`. Ao criar novos terrenos personalizados com outros nomes de grupo de variação (como `01-grass-random`), o Studio não selecionava automaticamente o conjunto de bordas correto, exigindo que o usuário alternasse manualmente na aba Pin.
+- **Solução:** Modificada a função `onMapEditorTileSelectionChanged` para buscar dinamicamente na lista de conjuntos de borda carregados se existe algum cujo campo `fillTerrain` seja idêntico ao `variantGroup` do pincel selecionado. Se encontrar, ele ativa o auto-borda e seleciona o conjunto correspondente imediatamente.
+
+---
+
+## 15. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)

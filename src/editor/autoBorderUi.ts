@@ -166,10 +166,22 @@ export function initAutoBorderUi(options?: { onRecalcFloor?: (floorZ: number) =>
 /** Chamado quando o tile selecionado muda (main.ts). */
 export function onMapEditorTileSelectionChanged(selectedId: number, tileRegistry: Record<number, { variantGroup?: string }>): void {
     if (isVariantBrush(selectedId)) {
-        const group = tileRegistry[selectedId]?.variantGroup;
-        if (group === 'grass') {
-            notifyAutoBorderGrassBrushSelected();
-            return;
+        const group = tileRegistry[selectedId]?.variantGroup?.toLowerCase();
+        if (group) {
+            const matchingSet = borderSets.find((s) => s.fillTerrain.toLowerCase() === group);
+            if (matchingSet) {
+                const toggle = getEl<HTMLInputElement>('autoBorderEnabledToggle');
+                if (toggle && !toggle.checked) {
+                    toggle.checked = true;
+                }
+                populateBorderSetSelect(group);
+                const select = getEl<HTMLSelectElement>('autoBorderSetSelect');
+                if (select) {
+                    select.value = matchingSet.id;
+                }
+                syncToolbarActiveState();
+                return;
+            }
         }
     }
     syncTileAutoBorderChip();

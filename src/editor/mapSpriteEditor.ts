@@ -161,6 +161,7 @@ export function initMapSpriteEditor() {
     const variantGroupInput = document.getElementById('mapSpriteVariantGroupInput') as HTMLInputElement | null;
     const variantGroupExclude = document.getElementById('mapSpriteVariantGroupExclude') as HTMLInputElement | null;
     const variantGroupDatalist = document.getElementById('mapSpriteVariantGroupList') as HTMLDataListElement | null;
+    const fillTerrainDatalist = document.getElementById('mapSpriteFillTerrainList') as HTMLDataListElement | null;
 
     // Ações
     const loadBtn = document.getElementById('loadMapSpriteBtn');
@@ -315,20 +316,31 @@ export function initMapSpriteEditor() {
     }
 
     function refreshVariantGroupDatalist(): void {
-        if (!variantGroupDatalist) return;
         const known = new Set<string>(['grass', 'stone', 'dirt', 'sand']);
         for (const sprite of serverSpritesList) {
             const group = sprite.properties?.variantGroup?.trim();
             if (group) known.add(group);
         }
-        variantGroupDatalist.innerHTML = '';
-        Array.from(known)
-            .sort((a, b) => a.localeCompare(b, 'pt'))
-            .forEach((group) => {
+        
+        const sortedGroups = Array.from(known).sort((a, b) => a.localeCompare(b, 'pt'));
+
+        if (variantGroupDatalist) {
+            variantGroupDatalist.innerHTML = '';
+            sortedGroups.forEach((group) => {
                 const opt = document.createElement('option');
                 opt.value = group;
                 variantGroupDatalist.appendChild(opt);
             });
+        }
+
+        if (fillTerrainDatalist) {
+            fillTerrainDatalist.innerHTML = '';
+            sortedGroups.forEach((group) => {
+                const opt = document.createElement('option');
+                opt.value = group;
+                fillTerrainDatalist.appendChild(opt);
+            });
+        }
     }
 
     function sanitizeVariantGroup(raw: string): string {
