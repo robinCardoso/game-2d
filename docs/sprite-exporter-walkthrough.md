@@ -170,7 +170,21 @@ Chave em `tile_properties.json` = **nome do arquivo sem `.png`** (ex. `01_grama`
 
 ---
 
-## 📚 10. Documentação relacionada
+## 10. Movimentação Dinâmica de Categorias/Subpastas
+
+O Studio agora suporta a reorganização de pastas diretamente pela interface de forma transparente.
+
+* **Comportamento antigo:** Se você tentasse editar um sprite existente no editor e alterasse a subpasta no campo "Subpasta em tiles/maps", o sistema salvava o metadado no JSON mas a imagem `.png` ficava estagnada na pasta antiga. Isso porque a imagem era enviada como uma URL do servidor e a API exigia Base64.
+* **Novo Comportamento (Automático):** A API `POST /api/save-map-sprite` detecta se a imagem enviada é uma URL do servidor contendo `/tiles/`. Se for detectada uma alteração de pasta física de destino, o backend:
+  1. Cria recursivamente a nova subpasta se ela não existir.
+  2. Copia o arquivo PNG físico para o novo local.
+  3. Deleta o PNG na pasta antiga de forma limpa.
+
+Isso elimina a necessidade de mover arquivos pelo sistema operacional ou ter de re-importar o arquivo localmente pelo navegador.
+
+---
+
+## 11. Documentação relacionada
 
 - [studio-improvements-log.md](./studio-improvements-log.md) — log consolidado e checklist de regressão
 - [map-format.md](./map-format.md) — formato esparso, resolução por `ref`

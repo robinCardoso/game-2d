@@ -23,6 +23,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **UX de Exportação** | Perda de dados (stripping), botões redundantes, campos vazios | `resolveStripBaseName` ajustado, inputs obrigatórios, botões contextuais no calibrador |
 | **Borracha do Mapa** | Borracha não limpava piso base quando havia grama (comportamento de dois passos impedido por drag culling) | Remoção do `continue` em `eraseTileAt`, limpando grama, base e borda de uma só vez |
 | **Quinas Internas (L)** | Visualização das quinas L em faixa plana 4x1 sem indicação espacial de onde ficava a grama | Alteração para uma grade 3x3 simétrica e intuitiva (cantos de pedra, centro/cardinais de grama) |
+| **Movimentação de Sprites** | Trocar categoria/subpasta de um sprite existente não movia a imagem física `.png` de lugar no servidor | API detecta URL local no `spriteBase64` e move/copia o arquivo físico automaticamente no backend |
 
 ---
 
@@ -326,7 +327,16 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 12. Referências
+## 12. Movimentação Automática de Categoria/Subpasta (2026-06-04)
+
+### Organização Dinâmica de Pastas no Servidor
+- **Arquivo:** `vite.config.ts` (API `/api/save-map-sprite`)
+- **Problema:** Ao carregar um sprite existente para edição, o navegador carrega a imagem via URL absoluta do servidor. Se o usuário alterasse o campo "Subpasta em tiles/maps" e salvasse, a imagem física `.png` permanecia na pasta antiga, pois o backend esperava apenas dados de imagem em formato Base64 para gravar no disco. Com isso, a alteração de categoria não era efetivada de verdade na estrutura de pastas.
+- **Solução:** Aprimorada a API `/api/save-map-sprite` para verificar se `spriteBase64` é uma URL local que contenha `/tiles/`. Se for e o caminho de destino (`targetDir`) for diferente do caminho de origem do arquivo, o servidor automaticamente faz a cópia do arquivo físico para a nova pasta de destino e apaga o arquivo antigo de forma segura.
+
+---
+
+## 13. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)

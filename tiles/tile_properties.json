@@ -1,1 +1,38 @@
-{}
+{
+  "01_grama_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-grama_variants",
+    "assetType": "terrain",
+    "variantGroup": "grass",
+    "variantStripFrames": 15,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 15,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
+  },
+  "01_ground_pedra_variants": {
+    "walkable": true,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-ground-pedra_variants",
+    "assetType": "terrain",
+    "variantGroup": "ground",
+    "variantStripFrames": 4,
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 4,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
+  }
+}

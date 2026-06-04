@@ -1025,6 +1025,19 @@ export default defineConfig({
                   const imagePath = path.resolve(targetDir, `${filename}.png`);
                   fs.writeFileSync(imagePath, imageBuffer);
                   console.log(`[Vite Backend] Sprite de mapa salvo em: ${imagePath}`);
+                } else if (spriteBase64 && typeof spriteBase64 === 'string' && spriteBase64.includes('/tiles/')) {
+                  const urlParts = spriteBase64.split('/tiles/');
+                  const sourceRelativePath = 'tiles/' + urlParts[urlParts.length - 1];
+                  const sourcePath = path.resolve(__dirname, sourceRelativePath);
+                  const imagePath = path.resolve(targetDir, `${filename}.png`);
+                  
+                  if (fs.existsSync(sourcePath) && sourcePath !== imagePath) {
+                    fs.copyFileSync(sourcePath, imagePath);
+                    console.log(`[Vite Backend] Sprite copiado de ${sourcePath} para ${imagePath}`);
+                    
+                    fs.unlinkSync(sourcePath);
+                    console.log(`[Vite Backend] Sprite antigo removido em: ${sourcePath}`);
+                  }
                 }
 
                 const propertiesPath = path.resolve(__dirname, 'tiles/tile_properties.json');

@@ -52,6 +52,8 @@ Referência detalhada: `docs/studio-improvements-log.md`, `docs/auto-border.md`,
 
 ## APIs dev (`vite.config.ts`) — só `npm run dev`
 
+- **Movimentação automática de PNG:** Ao salvar um sprite existente (`POST /api/save-map-sprite`), se a URL da imagem for local (contiver `/tiles/`) e a subpasta/categoria informada for diferente da atual, o backend cria a nova subpasta, copia o arquivo físico PNG para ela e remove o arquivo original do caminho antigo.
+
 | Método | Rota | Uso |
 |--------|------|-----|
 | GET | `/api/list-map-sprites` | Dropdown Criar Sprites |
