@@ -346,6 +346,66 @@ function refMatchesMapSprite(ref: string, filename: string): boolean {
   return ref === filename || ref.startsWith(`${filename}#`);
 }
 
+function collectCharacterUsage(relativePath: string): {
+  relativePath: string;
+  presetName: string | null;
+  maps: Array<{ mapId: string; mapFile: string; spawnCount: number }>;
+  totalSpawns: number;
+} {
+  const config = getGameConfig();
+  const configPath = `${config.charactersDir}/${relativePath}`.replace(/\\/g, '/');
+
+  let presetName: string | null = null;
+  const presetsPath = path.resolve(__dirname, 'public/creature_presets.json');
+  if (fs.existsSync(presetsPath)) {
+    try {
+      const presets = JSON.parse(fs.readFileSync(presetsPath, 'utf-8'));
+      if (Array.isArray(presets)) {
+        const found = presets.find((p) => p && typeof p === 'object' && p.configPath === configPath);
+        if (found) {
+          presetName = found.name;
+        }
+      }
+    } catch (e) {
+      console.warn('[Vite Backend] Erro ao ler creature_presets.json:', e);
+    }
+  }
+
+  const maps: Array<{ mapId: string; mapFile: string; spawnCount: number }> = [];
+  let totalSpawns = 0;
+
+  if (presetName) {
+    const mapsDir = path.resolve(__dirname, 'public/maps');
+    if (fs.existsSync(mapsDir)) {
+      for (const mapFile of fs.readdirSync(mapsDir).filter((f) => f.endsWith('.json'))) {
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(mapsDir, mapFile), 'utf-8'));
+          let spawnCount = 0;
+          if (Array.isArray(content.spawns)) {
+            for (const spawn of content.spawns) {
+              if (spawn && spawn.name === presetName) {
+                spawnCount++;
+              }
+            }
+          }
+          if (spawnCount > 0) {
+            maps.push({
+              mapId: typeof content.mapId === 'string' ? content.mapId : mapFile.replace(/\.json$/, ''),
+              mapFile,
+              spawnCount,
+            });
+            totalSpawns += spawnCount;
+          }
+        } catch (err) {
+          console.warn(`[Vite Backend] Erro ao escanear spawns em ${mapFile}:`, err);
+        }
+      }
+    }
+  }
+
+  return { relativePath, presetName, maps, totalSpawns };
+}
+
 function collectMapSpriteUsage(filename: string): {
   filename: string;
   maps: Array<{ mapId: string; mapFile: string; cellCount: number }>;
@@ -643,6 +703,102 @@ export default defineConfig({
             } catch (err: unknown) {
               const message = err instanceof Error ? err.message : String(err);
               console.error('[Vite Backend] Erro ao excluir sprite:', err);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: message }));
+            }
+            return;
+          }
+          if (reqPath === '/api/delete-character' && req.method === 'DELETE') {
+            try {
+              const relativePath = reqSearch.get('relativePath') ?? '';
+              const force = reqSearch.get('force') === 'true';
+
+              if (!relativePath || relativePath.includes('..')) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Parâmetro relativePath inválido.' }));
+                return;
+              }
+
+              const config = getGameConfig();
+              const jsonPath = path.resolve(__dirname, config.charactersDir, relativePath);
+              
+              if (!fs.existsSync(jsonPath)) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Personagem não encontrado.' }));
+                return;
+              }
+
+              const usage = collectCharacterUsage(relativePath);
+              if (!force && usage.totalSpawns > 0) {
+                res.statusCode = 409;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(
+                  JSON.stringify({
+                    error: `Personagem em uso em ${usage.maps.length} mapa(s).`,
+                    maps: usage.maps,
+                    totalSpawns: usage.totalSpawns,
+                  })
+                );
+                return;
+              }
+
+              // Lê o JSON para extrair o spriteSheetUrl
+              let spriteSheetUrl: string | undefined;
+              try {
+                const charConfig = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+                spriteSheetUrl = charConfig.spriteSheetUrl;
+              } catch (e) {
+                console.warn('[Vite Backend] Erro ao ler JSON para extrair spritesheet:', e);
+              }
+
+              // Se a spritesheet for um arquivo local na pasta de personagens, exclui também
+              if (spriteSheetUrl && typeof spriteSheetUrl === 'string') {
+                const cleanBase = config.charactersDir.replace(/\/+$/, '');
+                if (spriteSheetUrl.startsWith(cleanBase + '/')) {
+                  const pngPath = path.resolve(__dirname, spriteSheetUrl);
+                  if (fs.existsSync(pngPath)) {
+                    fs.unlinkSync(pngPath);
+                    console.log(`[Vite Backend] PNG do personagem removido: ${pngPath}`);
+                  }
+                }
+              }
+
+              // Exclui o arquivo JSON de configuração
+              fs.unlinkSync(jsonPath);
+              console.log(`[Vite Backend] JSON do personagem removido: ${jsonPath}`);
+
+              // Remove do arquivo de presets
+              const presetsPath = path.resolve(__dirname, 'public/creature_presets.json');
+              if (fs.existsSync(presetsPath) && usage.presetName) {
+                try {
+                  const presets = JSON.parse(fs.readFileSync(presetsPath, 'utf-8'));
+                  if (Array.isArray(presets)) {
+                    const filtered = presets.filter((p) => !p || p.name !== usage.presetName);
+                    fs.writeFileSync(presetsPath, JSON.stringify(filtered, null, 2) + '\n');
+                    console.log(`[Vite Backend] Preset de criatura removido: ${usage.presetName}`);
+                  }
+                } catch (e) {
+                  console.warn('[Vite Backend] Erro ao atualizar creature_presets.json:', e);
+                }
+              }
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  relativePath,
+                  deletedJson: jsonPath,
+                  deletedPng: spriteSheetUrl || null,
+                  presetRemoved: usage.presetName || null,
+                })
+              );
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              console.error('[Vite Backend] Erro ao excluir personagem:', err);
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ error: message }));

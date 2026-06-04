@@ -42,5 +42,14 @@ export function mapDbCharacter(row: DbCharacter): CharacterRow {
         createdAt: row.created_at,
         lastPlayedAt: row.last_played_at,
         deletedAt: row.deleted_at,
+        vocation: (row.outfit_config as any).vocation ?? 'knight',
+        level: (row.outfit_config as any).level ?? 1,
+        experience: (row.outfit_config as any).experience ?? 0,
+        gender: (row.outfit_config as any).gender ?? 'male',
+        appearance: (row.outfit_config as any).appearance ?? {
+            gender: ((row.outfit_config as any).gender ?? 'male') as 'male' | 'female',
+            vocation: ((row.outfit_config as any).vocation ?? 'knight') as 'knight' | 'mage' | 'archer',
+            outfitId: `default_${(row.outfit_config as any).vocation ?? 'knight'}_${(row.outfit_config as any).gender ?? 'male'}`,
+        },
     };
 }

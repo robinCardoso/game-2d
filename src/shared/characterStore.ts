@@ -9,8 +9,9 @@ import {
 } from './mockAuth';
 import { getSupabase, isSupabaseConfigured, mapDbCharacter, type DbCharacter } from './supabaseClient';
 import type { CharacterRow } from './types';
+import type { Gender } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
-import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
+import { MAX_CHARACTERS_PER_ACCOUNT, OUTFIT_PRESETS } from './types';
 
 export async function listCharacters(accountId: string): Promise<CharacterRow[]> {
     if (isMockAuthEnabled()) {
@@ -45,28 +46,45 @@ export async function createCharacter(
     accountId: string,
     name: string,
     presetId: string,
-    spawnMapId = 'rookgaard'
+    spawnMapId = 'rookgaard',
+    gender: Gender = 'male'
 ): Promise<CharacterRow> {
     if (isMockAuthEnabled()) {
         if (mockIsNameTaken(name)) {
             throw new Error('Este nome já está em uso.');
         }
-        return mockCreateCharacter(accountId, name, presetId, spawnMapId);
+        return mockCreateCharacter(accountId, name, presetId, spawnMapId, gender);
     }
     const existing = await listCharacters(accountId);
     if (existing.length >= MAX_CHARACTERS_PER_ACCOUNT) {
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
+    const preset = OUTFIT_PRESETS[presetId] || OUTFIT_PRESETS.knight;
     const base = createDefaultCharacterConfig();
     base.name = name;
-    base.spriteSheetUrl = 'tiles/characters/knight.png';
+    base.spriteSheetUrl = preset.config.spriteSheetUrl || 'tiles/characters/knight.png';
+
+    const appearance = {
+        gender: gender as 'male' | 'female',
+        vocation: presetId as 'knight' | 'mage' | 'archer',
+        outfitId: `default_${presetId}_${gender}`,
+    };
+
+    const outfitConfigWithStats = {
+        ...base,
+        vocation: presetId,
+        level: 1,
+        experience: 0,
+        gender,
+        appearance,
+    };
 
     const { data, error } = await getSupabase()
         .from('characters')
         .insert({
             account_id: accountId,
             name: name.trim(),
-            outfit_config: base,
+            outfit_config: outfitConfigWithStats,
             spawn_map_id: spawnMapId,
         })
         .select()

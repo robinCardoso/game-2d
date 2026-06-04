@@ -47,6 +47,7 @@ import { DEFAULT_WS_PORT } from '../../shared/protocol';
 import { GameNetClient } from '../net/gameNetClient';
 import { createEnterTicket } from '../shared/enterTicket';
 import type { CharacterRow } from '../shared/types';
+import { updateCharacterStatsUi } from './ui/characterStatsUi';
 
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
 const PLAY_BORDER_SET_ID = 'grass_edges';
@@ -514,6 +515,7 @@ function setupNetwork(char: CharacterRow, accountId: string): void {
 
 export async function startPlay(character: CharacterRow, accountId: string): Promise<void> {
     if (playCharNameEl) playCharNameEl.textContent = character.name;
+    updateCharacterStatsUi(character);
 
     const outfit = character.outfitConfig as CharacterSpriteConfig;
     activeCharacterController = new SpriteAnimationController(outfit);

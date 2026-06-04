@@ -283,6 +283,7 @@ export function loadMapFromJson(
     worldMap: WorldMap;
     grassOverlay?: LayerMap;
     borderOverlay?: LayerMap;
+    itemsOverlay?: LayerMap;
     spawn: SpawnPoint;
     name: string;
     mapId?: string;

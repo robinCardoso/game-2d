@@ -362,7 +362,10 @@
                     <button type="button" class="floor-btn" id="exportCharBtn" style="padding: 6px;">Exportar JSON</button>
                     <button type="button" class="floor-btn" id="importCharBtn" style="padding: 6px;">Importar JSON</button>
                   </div>
-                  <button type="button" class="menu-dropdown-item block-btn" id="saveServerBtn" style="margin-bottom: 12px; text-align: center; border: 1px solid var(--accent-color); color: var(--accent-color); background: transparent;">💾 Salvar no Servidor</button>
+                  <div class="floor-controls" style="margin-bottom: 12px; gap: 8px;">
+                    <button type="button" class="floor-btn" id="saveServerBtn" style="border: 1px solid var(--accent-color); color: var(--accent-color); background: transparent; flex: 1;">💾 Salvar no Servidor</button>
+                    <button type="button" class="floor-btn" id="deleteServerBtn" style="border: 1px solid #ef4444; color: #ef4444; background: transparent; flex: 1; display: none;">🗑️ Excluir</button>
+                  </div>
                   <input type="file" id="importCharInput" accept=".json,application/json" hidden />
 
                   <label class="flyout-label">Imagem da Spritesheet (PNG)</label>

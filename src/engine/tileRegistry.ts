@@ -88,7 +88,7 @@ export function takeVariantStripMismatches(): VariantStripMismatch[] {
 export function inferVariantStripFrameCount(
     img: HTMLImageElement,
     custom?: TileProperties,
-    fileName?: string
+    _fileName?: string
 ): number {
     const tileSize = ENGINE_CONFIG.TILE_SIZE;
     const w = img.naturalWidth || img.width || 0;

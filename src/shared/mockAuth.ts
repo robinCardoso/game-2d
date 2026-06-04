@@ -1,4 +1,5 @@
 import type { AuthSession, CharacterRow, UserProfile } from './types';
+import type { Gender } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 
@@ -19,7 +20,23 @@ export function isMockAuthEnabled(): boolean {
 function readChars(): CharacterRow[] {
     try {
         const raw = localStorage.getItem(CHARS_KEY);
-        return raw ? (JSON.parse(raw) as CharacterRow[]) : [];
+        const parsed = raw ? (JSON.parse(raw) as CharacterRow[]) : [];
+        return parsed.map(c => {
+            const vocation = c.vocation ?? (c.outfitConfig as any).vocation ?? 'knight';
+            const gender = c.gender ?? (c.outfitConfig as any).gender ?? 'male';
+            return {
+                ...c,
+                vocation,
+                level: c.level ?? (c.outfitConfig as any).level ?? 1,
+                experience: c.experience ?? (c.outfitConfig as any).experience ?? 0,
+                gender,
+                appearance: c.appearance ?? (c.outfitConfig as any).appearance ?? {
+                    gender: gender as 'male' | 'female',
+                    vocation: vocation as 'knight' | 'mage' | 'archer',
+                    outfitId: `default_${vocation}_${gender}`,
+                },
+            };
+        });
     } catch {
         return [];
     }
@@ -95,8 +112,9 @@ export function mockGetCharacter(id: string, accountId: string): CharacterRow | 
 export function mockCreateCharacter(
     accountId: string,
     name: string,
-    _presetId: string,
-    spawnMapId: string
+    presetId: string,
+    spawnMapId: string,
+    gender: Gender = 'male'
 ): CharacterRow {
     const chars = readChars();
     const active = chars.filter((c) => c.accountId === accountId && !c.deletedAt);
@@ -105,16 +123,36 @@ export function mockCreateCharacter(
     }
     const base = createDefaultCharacterConfig();
     base.name = name;
-    base.spriteSheetUrl = 'tiles/characters/knight.png';
+    
+    // Default fallback or resolve preset details
+    base.spriteSheetUrl = `tiles/characters/${presetId}.png`;
+
+    const appearance = {
+        gender: gender as 'male' | 'female',
+        vocation: presetId as 'knight' | 'mage' | 'archer',
+        outfitId: `default_${presetId}_${gender}`,
+    };
 
     const row: CharacterRow = {
         id: uid(),
         accountId,
         name,
-        outfitConfig: base,
+        outfitConfig: {
+            ...base,
+            vocation: presetId,
+            level: 1,
+            experience: 0,
+            gender,
+            appearance,
+        } as any,
         spawnMapId,
         createdAt: new Date().toISOString(),
         lastPlayedAt: null,
+        vocation: presetId,
+        level: 1,
+        experience: 0,
+        gender,
+        appearance,
     };
     chars.push(row);
     writeChars(chars);

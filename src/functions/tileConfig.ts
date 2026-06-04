@@ -28,6 +28,15 @@ export interface TileProperties {
     borderSetId?: string;
     tileRole?: string;
     paletteCategory?: string;
+    frameWidth?: number;
+    frameHeight?: number;
+    width?: number;
+    height?: number;
+    offsetX?: number;
+    offsetY?: number;
+    gapX?: number;
+    gapY?: number;
+    sheetLayout?: string;
 }
 
 export const TILE_CONFIG: Record<string, TileProperties> = {

@@ -1,4 +1,4 @@
-import { serializeCharacterConfig, parseCharacterConfig } from '../character/characterSerializer';
+import { serializeCharacterConfig, parseCharacterConfig, createDefaultCharacterConfig } from '../character/characterSerializer';
 import type { SpriteAnimationController } from '../character/spriteAnimation';
 import type { CharacterState, Direction } from '../character/spriteAnimation';
 import { openCharacterCalibrator } from './characterCalibratorModal';
@@ -147,6 +147,7 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
     const exportBtn = document.getElementById('exportCharBtn');
     const importBtn = document.getElementById('importCharBtn');
     const saveServerBtn = document.getElementById('saveServerBtn');
+    const deleteServerBtn = document.getElementById('deleteServerBtn');
     const importInput = document.getElementById('importCharInput') as HTMLInputElement;
     const loadSpriteBtn = document.getElementById('loadSpriteBtn');
     const importSpriteInput = document.getElementById('importSpriteInput') as HTMLInputElement;
@@ -229,6 +230,12 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         }
     }
 
+    function updateDeleteButtonVisibility(): void {
+        if (deleteServerBtn) {
+            deleteServerBtn.style.display = charServerSelectEl?.value ? 'block' : 'none';
+        }
+    }
+
     function applyProfileUi(): void {
         const profile = getProfile();
         if (charNameLabelEl) {
@@ -244,6 +251,7 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         if (registerInPaletteEl) registerInPaletteEl.checked = !!profile.creatureType;
         void reloadServerCharactersList();
         syncControllerToUI();
+        updateDeleteButtonVisibility();
     }
 
     function setProfile(id: SpriteProfileId): void {
@@ -383,7 +391,10 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
             }
             await reloadServerCharactersList();
             const match = serverCharactersList.find((c) => c.name === result.name);
-            if (charServerSelectEl && match) charServerSelectEl.value = match.relativePath;
+            if (charServerSelectEl && match) {
+                charServerSelectEl.value = match.relativePath;
+                updateDeleteButtonVisibility();
+            }
         } catch (err: unknown) {
             popup.alert(`Falha ao salvar: ${err instanceof Error ? err.message : String(err)}`, 'Erro');
             if (saveServerBtn) {
@@ -482,6 +493,7 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
     sheetLayoutEl?.addEventListener('change', () => { syncUIToController(); getController().setState(getController().currentState); });
 
     charServerSelectEl?.addEventListener('change', () => {
+        updateDeleteButtonVisibility();
         const charData = serverCharactersList.find((c) => c.relativePath === charServerSelectEl.value);
         if (!charData?.config) return;
         const ctrl = getController();
@@ -536,6 +548,88 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         document.body.appendChild(a); a.click(); a.remove();
     });
     saveServerBtn?.addEventListener('click', () => void saveActiveCharacterToServer(true));
+    deleteServerBtn?.addEventListener('click', async () => {
+        const relativePath = charServerSelectEl?.value;
+        if (!relativePath) {
+            toast.error('Nenhum personagem selecionado para exclusão.');
+            return;
+        }
+
+        const charData = serverCharactersList.find((c) => c.relativePath === relativePath);
+        const displayName = charData ? charData.name : relativePath;
+
+        const confirmed = await popup.confirm(
+            `Excluir o personagem "${displayName}" permanentemente?<br><br>Esta ação remove o arquivo JSON de configuração e a imagem PNG correspondente no servidor.`,
+            '🗑️ Confirmar Exclusão'
+        );
+        if (!confirmed) return;
+
+        try {
+            const originalText = deleteServerBtn.innerText;
+            deleteServerBtn.innerText = '⌛ Excluindo...';
+            (deleteServerBtn as HTMLButtonElement).disabled = true;
+
+            const deleteUrl = `/api/delete-character?relativePath=${encodeURIComponent(relativePath)}&force=false`;
+            const deleteRes = await fetch(deleteUrl, { method: 'DELETE' });
+
+            if (deleteRes.status === 409) {
+                const conflict = await deleteRes.json();
+                const mapLines = (conflict.maps ?? [])
+                    .map((m: any) => `  • ${m.mapFile} — ${m.spawnCount} spawn${m.spawnCount === 1 ? '' : 's'}`)
+                    .join('\n');
+                
+                (deleteServerBtn as HTMLButtonElement).disabled = false;
+                deleteServerBtn.innerText = originalText;
+
+                await popup.alert(
+                    `Não é possível excluir "${displayName}".<br><br>Em uso em ${conflict.maps.length} mapa${conflict.maps.length === 1 ? '' : 's'} (${conflict.totalSpawns} spawn${conflict.totalSpawns === 1 ? '' : 's'} no total):<br><br>${mapLines.replace(/\n/g, '<br>')}<br><br>Remova os spawns do mapa antes de excluir.`,
+                    '⚠️ Personagem em Uso'
+                );
+                return;
+            }
+
+            if (!deleteRes.ok) {
+                const err = await deleteRes.json().catch(() => ({}));
+                throw new Error(err.error || 'Erro desconhecido ao excluir.');
+            }
+
+            toast.success(`Personagem "${displayName}" excluído!`);
+            await finalizeDeletion();
+
+        } catch (err: any) {
+            toast.error(`Falha ao excluir: ${err.message}`);
+        } finally {
+            if (deleteServerBtn) {
+                (deleteServerBtn as HTMLButtonElement).disabled = false;
+                deleteServerBtn.innerText = '🗑️ Excluir';
+            }
+        }
+    });
+
+    async function finalizeDeletion() {
+        const ctrl = getController();
+        const profile = getProfile();
+        
+        ctrl.config = {
+            ...createDefaultCharacterConfig(),
+            name: profile.id === 'player' ? 'Novo Personagem' : profile.id === 'npc' ? 'Novo NPC' : 'Novo Mob',
+            category: profile.defaultCategory
+        };
+        ctrl.currentState = 'idle';
+        ctrl.currentDirection = 'down';
+        ctrl.loadImage();
+        
+        if (charNameInputEl) charNameInputEl.value = ctrl.config.name;
+        if (charCategoryInputEl) charCategoryInputEl.value = ctrl.config.category || '';
+        if (charServerSelectEl) charServerSelectEl.value = '';
+        
+        syncControllerToUI();
+        saveConfigToLocalStorage();
+        updateDeleteButtonVisibility();
+        
+        await reloadServerCharactersList();
+        await onCatalogChanged?.();
+    }
     importBtn?.addEventListener('click', () => importInput?.click());
     importInput?.addEventListener('change', () => {
         const file = importInput.files?.[0];
