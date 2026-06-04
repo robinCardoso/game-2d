@@ -1,11 +1,11 @@
 {
   "version": 1,
   "sets": {
-    "grass_edges": {
-      "label": "Bordas de grama",
-      "fillTerrain": "grass",
+    "terra_edges": {
+      "label": "01-bordas-grama",
+      "fillTerrain": "02-grass-random",
       "category": "borders/grass_edges",
-      "sheetFile": "grass_edges_sheet",
+      "sheetFile": "terra_edges_sheet",
       "calibration": {
         "frameWidth": 32,
         "frameHeight": 32,
@@ -133,18 +133,18 @@
         }
       ],
       "masks": {
-        "1": "grass_edges_mask_1",
-        "2": "grass_edges_mask_2",
-        "3": "grass_edges_mask_3",
-        "4": "grass_edges_mask_4",
-        "6": "grass_edges_mask_6",
-        "8": "grass_edges_mask_8",
-        "9": "grass_edges_mask_9",
-        "12": "grass_edges_mask_12",
-        "16": "grass_edges_mask_16",
-        "32": "grass_edges_mask_32",
-        "64": "grass_edges_mask_64",
-        "128": "grass_edges_mask_128"
+        "1": "terra_edges_mask_1",
+        "2": "terra_edges_mask_2",
+        "3": "terra_edges_mask_3",
+        "4": "terra_edges_mask_4",
+        "6": "terra_edges_mask_6",
+        "8": "terra_edges_mask_8",
+        "9": "terra_edges_mask_9",
+        "12": "terra_edges_mask_12",
+        "16": "terra_edges_mask_16",
+        "32": "terra_edges_mask_32",
+        "64": "terra_edges_mask_64",
+        "128": "terra_edges_mask_128"
       }
     }
   }

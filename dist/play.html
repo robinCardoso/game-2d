@@ -17,13 +17,19 @@
       .play-top-bar a { color: #818cf8; text-decoration: none; margin-left: 12px; }
       #canvasContainer { flex: 1; position: relative; min-height: 0; }
       .play-layout { display: flex; flex-direction: column; height: 100vh; }
+      .play-main-layout { display: grid; grid-template-columns: 1fr 280px; flex-grow: 1; overflow: hidden; }
+      .sidebar { background-color: #15171c; border-left: 1px solid #2d3139; display: flex; flex-direction: column; padding: 1rem; gap: 1rem; overflow-y: auto; }
+      .stats-panel { background: rgba(255, 255, 255, 0.03); border-radius: 0.75rem; padding: 1rem; }
+      .panel-title { font-size: 11px; font-weight: bold; color: #6366f1; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+      .info-row { display: flex; justify-content: space-between; font-size: 13px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 8px; color: #e2e8f0; }
+      .info-label { color: #94a3b8; }
     </style>
-    <script type="module" crossorigin src="/assets/play-DbOxrJgP.js"></script>
+    <script type="module" crossorigin src="/assets/play-Cs7uMZuX.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/characterSerializer-NFdx-pyM.js">
-    <link rel="modulepreload" crossorigin href="/assets/authGuard-BfF5FsYQ.js">
-    <link rel="modulepreload" crossorigin href="/assets/characterStore-u1QC-B7A.js">
+    <link rel="modulepreload" crossorigin href="/assets/authGuard-BHvk_2Ac.js">
+    <link rel="modulepreload" crossorigin href="/assets/characterStore-HXaxYxBm.js">
     <link rel="modulepreload" crossorigin href="/assets/analytics-RLXdCb65.js">
-    <link rel="modulepreload" crossorigin href="/assets/tileDraw-DaxMKli8.js">
+    <link rel="modulepreload" crossorigin href="/assets/tileDraw-BzAgzrxC.js">
     <link rel="stylesheet" crossorigin href="/assets/style-DA-MJcB_.css">
   </head>
   <body>
@@ -37,8 +43,25 @@
           <a href="#" id="logoutPlay">Sair</a>
         </span>
       </header>
-      <div id="canvasContainer">
-        <canvas id="gameCanvas"></canvas>
+      <div class="play-main-layout">
+        <div id="canvasContainer">
+          <canvas id="gameCanvas"></canvas>
+        </div>
+        <aside class="sidebar">
+          <div class="stats-panel">
+            <div class="panel-title">Atributos</div>
+            <div id="statsContainer">
+              <div class="info-row"><span class="info-label">Classe/Vocação:</span> <span id="statVocation">—</span></div>
+              <div class="info-row"><span class="info-label">Nível (Level):</span> <span id="statLevel">1</span></div>
+              <div class="info-row"><span class="info-label">Melee:</span> <span id="statMelee">0</span></div>
+              <div class="info-row"><span class="info-label">Ataque Distância:</span> <span id="statDistance">0</span></div>
+              <div class="info-row"><span class="info-label">Ataque Mágico:</span> <span id="statMagic">0</span></div>
+              <div class="info-row"><span class="info-label">Defesa:</span> <span id="statDefense">0</span></div>
+              <div class="info-row"><span class="info-label">Vida Máxima:</span> <span id="statHealth">0</span></div>
+              <div class="info-row"><span class="info-label">Mana Máxima:</span> <span id="statMana">0</span></div>
+            </div>
+          </div>
+        </aside>
       </div>
     </div>
     <div id="loadingScreen" class="loading-screen">
