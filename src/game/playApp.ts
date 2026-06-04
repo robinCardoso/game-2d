@@ -226,18 +226,35 @@ async function saveCurrentCharacterLocation(): Promise<void> {
 }
 
 let locationAutosaveStarted = false;
+let locationAutosaveIntervalId: number | null = null;
+
+function handleBeforeUnload(): void {
+    void saveCurrentCharacterLocation();
+}
 
 function setupLocationAutosave(): void {
     if (locationAutosaveStarted) return;
     locationAutosaveStarted = true;
 
-    window.addEventListener('beforeunload', () => {
-        void saveCurrentCharacterLocation();
-    });
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
-    window.setInterval(() => {
+    locationAutosaveIntervalId = window.setInterval(() => {
         void saveCurrentCharacterLocation();
     }, 10000);
+}
+
+export function stopLocationAutosave(): void {
+    if (!locationAutosaveStarted) return;
+    locationAutosaveStarted = false;
+
+    window.removeEventListener('beforeunload', handleBeforeUnload);
+
+    if (locationAutosaveIntervalId !== null) {
+        window.clearInterval(locationAutosaveIntervalId);
+        locationAutosaveIntervalId = null;
+    }
+
+    void saveCurrentCharacterLocation();
 }
 
 

@@ -1,7 +1,7 @@
 import { requireAuth, signOut } from '../shared/authGuard';
 import { getCharacter } from '../shared/characterStore';
 import { track } from '../shared/analytics';
-import { startPlay } from './playApp';
+import { startPlay, stopLocationAutosave } from './playApp';
 
 const params = new URLSearchParams(location.search);
 const characterId = params.get('characterId');
@@ -23,8 +23,13 @@ if (!characterId) {
     }
 }
 
+document.getElementById('changeCharLink')?.addEventListener('click', () => {
+    stopLocationAutosave();
+});
+
 document.getElementById('logoutPlay')?.addEventListener('click', async (e) => {
     e.preventDefault();
+    stopLocationAutosave();
     await signOut();
     location.href = '/login.html';
 });
