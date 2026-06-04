@@ -47,6 +47,7 @@ import { DEFAULT_WS_PORT } from '../../shared/protocol';
 import { GameNetClient } from '../net/gameNetClient';
 import { createEnterTicket } from '../shared/enterTicket';
 import type { CharacterRow } from '../shared/types';
+import { updateCharacterLocation } from '../shared/characterStore';
 import { updateCharacterStatsUi } from './ui/characterStatsUi';
 
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
@@ -194,6 +195,36 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     invalidateBorderDrawCache();
 }
 
+let activeCharacter: CharacterRow | null = null;
+
+async function saveCurrentCharacterLocation(): Promise<void> {
+    if (!activeCharacter || !currentMapId) return;
+    const entry = MAP_REGISTRY.find((m) => m.id === currentMapId);
+    if (!entry || entry.instanced) {
+        return;
+    }
+    let direction: 'north' | 'south' | 'east' | 'west' = 'south';
+    const controllerDir = activeCharacterController?.currentDirection;
+    if (controllerDir === 'up') direction = 'north';
+    else if (controllerDir === 'down') direction = 'south';
+    else if (controllerDir === 'left') direction = 'west';
+    else if (controllerDir === 'right') direction = 'east';
+
+    try {
+        await updateCharacterLocation(activeCharacter.id, {
+            mapId: currentMapId,
+            position: {
+                x: player.tileX,
+                y: player.tileY,
+                z: player.worldZ,
+            },
+            direction,
+        });
+    } catch (err) {
+        console.error('Failed to save character location:', err);
+    }
+}
+
 async function transitionToMap(
     targetMapId: string,
     overrideSpawn?: { x: number; y: number; z: number }
@@ -229,6 +260,9 @@ async function transitionToMap(
             player.tileY = overrideSpawn.y;
             player.worldZ = clampFloorZ(overrideSpawn.z);
             syncGridPlayerVisual(player, TILE_SIZE_SCREEN);
+        }
+        if (!entry.instanced) {
+            void saveCurrentCharacterLocation();
         }
     } finally {
         isTransitioningMap = false;
@@ -514,6 +548,7 @@ function setupNetwork(char: CharacterRow, accountId: string): void {
 }
 
 export async function startPlay(character: CharacterRow, accountId: string): Promise<void> {
+    activeCharacter = character;
     if (playCharNameEl) playCharNameEl.textContent = character.name;
     updateCharacterStatsUi(character);
 
@@ -528,7 +563,10 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
         player.worldY = player.tileY * TILE_SIZE_SCREEN;
     }
 
-    const entry = MAP_REGISTRY.find((m) => m.id === character.spawnMapId) ?? MAP_REGISTRY[0];
+    const entry =
+        MAP_REGISTRY.find((m) => m.id === character.mapId) ??
+        MAP_REGISTRY.find((m) => m.id === character.spawnMapId) ??
+        MAP_REGISTRY[0];
     if (!entry) throw new Error('Mapa inicial não encontrado.');
 
     showLoading('Carregando mundo…');
@@ -546,6 +584,14 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     window.addEventListener('resize', resize);
     resize();
     hideLoading();
+
+    window.addEventListener('beforeunload', () => {
+        void saveCurrentCharacterLocation();
+    });
+
+    setInterval(() => {
+        void saveCurrentCharacterLocation();
+    }, 10000);
 
     setupNetwork(character, accountId);
     loop();

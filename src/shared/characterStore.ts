@@ -6,6 +6,7 @@ import {
     mockListCharacters,
     mockSoftDeleteCharacter,
     mockUpdateLastPlayed,
+    mockUpdateCharacterLocation,
 } from './mockAuth';
 import { getSupabase, isSupabaseConfigured, mapDbCharacter, type DbCharacter } from './supabaseClient';
 import type { CharacterRow } from './types';
@@ -138,6 +139,44 @@ export function validateCharacterName(name: string): string | null {
         return 'Use apenas letras, números e espaços.';
     }
     return null;
+}
+
+export async function updateCharacterLocation(
+    characterId: string,
+    location: {
+        mapId: string;
+        position: { x: number; y: number; z: number };
+        direction: 'north' | 'south' | 'east' | 'west';
+    }
+): Promise<void> {
+    if (isMockAuthEnabled()) {
+        mockUpdateCharacterLocation(characterId, location);
+        return;
+    }
+    const supabase = getSupabase();
+    const { data: existing, error: fetchError } = await supabase
+        .from('characters')
+        .select('outfit_config')
+        .eq('id', characterId)
+        .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (existing) {
+        const outfitConfig = existing.outfit_config as any || {};
+        const newConfig = {
+            ...outfitConfig,
+            mapId: location.mapId,
+            position: location.position,
+            direction: location.direction,
+        };
+        const { error: updateError } = await supabase
+            .from('characters')
+            .update({
+                outfit_config: newConfig,
+            })
+            .eq('id', characterId);
+        if (updateError) throw updateError;
+    }
 }
 
 export { isSupabaseConfigured };

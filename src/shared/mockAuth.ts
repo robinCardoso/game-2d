@@ -197,3 +197,26 @@ export function mockIsNameTaken(name: string): boolean {
     const lower = name.trim().toLowerCase();
     return readChars().some((c) => !c.deletedAt && c.name.toLowerCase() === lower);
 }
+
+export function mockUpdateCharacterLocation(
+    id: string,
+    location: {
+        mapId: string;
+        position: { x: number; y: number; z: number };
+        direction: 'north' | 'south' | 'east' | 'west';
+    }
+): void {
+    const chars = readChars();
+    const c = chars.find((x) => x.id === id);
+    if (c) {
+        c.mapId = location.mapId;
+        c.position = { ...location.position };
+        c.direction = location.direction;
+        if (c.outfitConfig) {
+            (c.outfitConfig as any).mapId = location.mapId;
+            (c.outfitConfig as any).position = { ...location.position };
+            (c.outfitConfig as any).direction = location.direction;
+        }
+        writeChars(chars);
+    }
+}
