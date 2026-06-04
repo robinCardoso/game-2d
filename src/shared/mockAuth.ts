@@ -22,7 +22,30 @@ export function isMockAuthEnabled(): boolean {
 function readChars(): CharacterRow[] {
     try {
         const raw = localStorage.getItem(CHARS_KEY);
-        const parsed = raw ? (JSON.parse(raw) as CharacterRow[]) : [];
+        let parsed = raw ? (JSON.parse(raw) as CharacterRow[]) : [];
+
+        // Migração: Se houver uma sessão mock ativa, migra personagens órfãos (com ID antigo mock_*)
+        // para o novo ID de usuário determinístico (mock_user_*) para que o desenvolvedor não perca seus testes.
+        const sessionRaw = localStorage.getItem(SESSION_KEY);
+        if (sessionRaw) {
+            try {
+                const session = JSON.parse(sessionRaw) as AuthSession;
+                if (session && session.userId) {
+                    let migrated = false;
+                    parsed = parsed.map(c => {
+                        if (c.accountId && c.accountId.startsWith('mock_') && !c.accountId.startsWith('mock_user_')) {
+                            c.accountId = session.userId;
+                            migrated = true;
+                        }
+                        return c;
+                    });
+                    if (migrated) {
+                        localStorage.setItem(CHARS_KEY, JSON.stringify(parsed));
+                    }
+                }
+            } catch (e) {}
+        }
+
         return parsed.map(c => {
             const config = c.outfitConfig as any || {};
             const vocation = c.vocation ?? config.vocation ?? 'knight';
@@ -84,12 +107,15 @@ export function mockGetProfile(): UserProfile | null {
 }
 
 export function mockSignUp(email: string, _password: string): AuthSession {
-    const session: AuthSession = { userId: uid(), email: email.trim().toLowerCase() };
+    const normalizedEmail = email.trim().toLowerCase();
+    const cleanEmail = normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_');
+    const userId = `mock_user_${cleanEmail}`;
+    const session: AuthSession = { userId, email: normalizedEmail };
     localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    const studio = email.endsWith('@gm.dev') || import.meta.env.VITE_MOCK_STUDIO === 'true';
+    const studio = normalizedEmail.endsWith('@gm.dev') || import.meta.env.VITE_MOCK_STUDIO === 'true';
     const profile: UserProfile = {
         id: session.userId,
-        displayName: email.split('@')[0],
+        displayName: normalizedEmail.split('@')[0],
         role: studio ? 'gm' : 'player',
         canAccessStudio: studio,
     };
