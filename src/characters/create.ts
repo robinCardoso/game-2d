@@ -47,28 +47,18 @@ function renderOutfitOptions() {
         outfitSelect.appendChild(option);
     }
 
-    // Se não houver outfits dinâmicos cadastrados, adiciona um default fictício
-    if (availableOutfits.length === 0) {
-        const option = document.createElement('option');
-        option.value = `default_${vocation}_${gender}`;
-        option.textContent = `Padrão (${vocation})`;
-        outfitSelect.appendChild(option);
-    }
-
     updatePreview();
 }
 
 function updatePreview(): void {
-    if (presetPreview && outfitSelect && presetSelect && genderSelect) {
+    if (presetPreview && outfitSelect) {
         const outfitId = outfitSelect.value;
         const outfit = findOutfitPreset(outfitPresets, outfitId);
 
         if (outfit) {
             presetPreview.src = `/${outfit.spriteSheetUrl || ''}`;
         } else {
-            const vocation = presetSelect.value as VocationId;
-            const gender = genderSelect.value as Gender;
-            presetPreview.src = `/tiles/characters/vocations/${gender}/${vocation}.png`;
+            presetPreview.src = '';
         }
     }
 }
