@@ -78,7 +78,7 @@ export function buildDefaultSpriteEditorProfiles(): Record<SpriteProfileId, Spri
     return {
         player: {
             id: 'player',
-            flyoutTitle: 'Personagem',
+            flyoutTitle: 'Visual (Outfit)',
             defaultCategory: '',
             localStorageKey: 'game2d_active_character_config',
         },
@@ -239,10 +239,10 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
     function applyProfileUi(): void {
         const profile = getProfile();
         if (charNameLabelEl) {
-            charNameLabelEl.textContent = profile.id === 'player' ? 'Nome do Personagem' : profile.id === 'npc' ? 'Nome do NPC' : 'Nome do Mob';
+            charNameLabelEl.textContent = profile.id === 'player' ? 'Nome do Visual (Outfit)' : profile.id === 'npc' ? 'Nome do NPC' : 'Nome do Mob';
         }
         if (charServerLabelEl) {
-            charServerLabelEl.textContent = profile.id === 'player' ? 'Carregar do Servidor' : 'Carregar existente';
+            charServerLabelEl.textContent = profile.id === 'player' ? 'Carregar Outfit do Servidor' : 'Carregar existente';
         }
         if (creatureMetaSectionEl) creatureMetaSectionEl.style.display = profile.creatureType ? 'block' : 'none';
         
