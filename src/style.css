@@ -792,8 +792,8 @@ canvas { image-rendering: pixelated; display: block; }
     height: 96px;
 }
 #calBorderInnerPreviewCanvas {
-    width: 128px;
-    height: 32px;
+    width: 96px;
+    height: 96px;
     margin-top: 4px;
     touch-action: manipulation;
 }

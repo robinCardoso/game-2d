@@ -74,6 +74,7 @@ Lista `#mapSpriteServerSelect`: optgroups **Terreno** / **Itens** (sprites edit�
 | `#calBorderPreset3x3` / `#calBorderPreset4x4` | **9 vizinhos** (8 slots + centro vazio) / **4 cardinais** |
 | `#calBorderCellList` | Máscaras 0–15 + diagonais por célula |
 | `#calBorderPreviewCanvas` | Prévia 3×3 (grama isolada + filetes; vermelho = máscara faltando) |
+| `#calBorderInnerPreviewCanvas` | Prévia 3×3 das quinas internas L (centro/cardinais = grama; cantos = quinas L L6/L12/L3/L9) |
 | `#calBorderPreviewStatus` | Legenda OK / máscaras faltando |
 | `#calBorderConfirmBtn` | Confirmar calibração do conjunto |
 

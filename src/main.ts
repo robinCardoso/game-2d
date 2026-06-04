@@ -1214,7 +1214,6 @@ function eraseTileAt(
         if (grassId !== emptyId) {
             clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
             touchedGrass = true;
-            continue;
         }
         worldMap[z][py][px] = emptyId;
         clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);

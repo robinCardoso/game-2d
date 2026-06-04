@@ -4,10 +4,6 @@
     "grass": {
       "label": "Grama",
       "previewTileFileKey": "grama_20_var_variants"
-    },
-    "stone": {
-      "label": "Pedra",
-      "previewTileFileKey": "ground_pedra_variants"
     }
   }
 }

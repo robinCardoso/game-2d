@@ -2,7 +2,7 @@
 
 Documento de referência para humanos e agentes IA. **Atualizar este arquivo** quando mudar calibrador, registry, carregamento de mapas ou APIs de sprite.
 
-Última revisão: **2026-06-02**
+Última revisão: **2026-06-04**
 
 ---
 
@@ -21,6 +21,8 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Auto-borda visual** | Filetes errados, cantos L, cruz (+) | `borderMaskBits.ts` + `collectBorderDrawMasks()` multi-sprite |
 | **CPU alto (Studio)** | Bordas recalculadas todo frame; minimap 256×256×60 | Cache de draw, culling viewport, minimap lazy, 30 FPS idle |
 | **UX de Exportação** | Perda de dados (stripping), botões redundantes, campos vazios | `resolveStripBaseName` ajustado, inputs obrigatórios, botões contextuais no calibrador |
+| **Borracha do Mapa** | Borracha não limpava piso base quando havia grama (comportamento de dois passos impedido por drag culling) | Remoção do `continue` em `eraseTileAt`, limpando grama, base e borda de uma só vez |
+| **Quinas Internas (L)** | Visualização das quinas L em faixa plana 4x1 sem indicação espacial de onde ficava a grama | Alteração para uma grade 3x3 simétrica e intuitiva (cantos de pedra, centro/cardinais de grama) |
 
 ---
 
@@ -306,7 +308,25 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 9. Referências
+## 10. Borracha do Mapa (2026-06-04)
+
+### Limpeza Multi-Camadas em Passo Único
+- **Arquivo:** `src/main.ts`
+- **Problema:** A borracha em células com overlay de grama apenas limpava a grama e pulava o piso base e as bordas. Por causa do culling de traço (`lastPaintCellKey`), isso impedia o usuário de limpar a célula completa em um único movimento de arrastar.
+- **Solução:** Removida a instrução `continue` em `eraseTileAt`, permitindo que a remoção do overlay de grama prossiga e também apague o piso base (`worldMap`) e a borda correspondente.
+
+---
+
+## 11. Calibrador de Quinas Internas (L) (2026-06-04)
+
+### Grade 3x3 Intuitiva para Quinas L
+- **Arquivos:** `src/editor/borderSetPreview.ts`, `studio.html`, `src/style.css`
+- **Problema:** A visualização horizontal em 4x1 das quinas internas (L) não dava ao usuário referência espacial de onde a grama ficava em relação à pedra, dificultando calibrar o PNG correto.
+- **Solução:** O preview de quinas L foi transformado em uma grade 3x3 simétrica ao preview de bordas retas. O centro e as posições cardinais (N, E, S, O) são renderizados como grama, e os cantos representam as quinas L (L6 no NW, L12 no NE, L3 no SW, L9 no SE). A área do canvas foi redimensionada e ajustada no CSS.
+
+---
+
+## 12. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)

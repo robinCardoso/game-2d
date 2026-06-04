@@ -314,10 +314,15 @@ export function pickInnerCornerPreviewIndex(
     const scaleY = canvas.height / rect.height;
     const px = (clientX - rect.left) * scaleX;
     const py = (clientY - rect.top) * scaleY;
-    if (py < 0 || py > tilePx) return null;
-    const col = Math.floor(px / tilePx);
-    if (col < 0 || col >= INNER_CORNER_PREVIEW_COLS) return null;
-    return col;
+    const gx = Math.floor(px / tilePx);
+    const gy = Math.floor(py / tilePx);
+    if (gx < 0 || gx >= 3 || gy < 0 || gy >= 3) return null;
+
+    if (gx === 0 && gy === 0) return 1; // M6
+    if (gx === 2 && gy === 0) return 2; // M12
+    if (gx === 0 && gy === 2) return 0; // M3
+    if (gx === 2 && gy === 2) return 3; // M9
+    return null;
 }
 
 export interface InnerCornerPreviewResult {
@@ -325,7 +330,7 @@ export interface InnerCornerPreviewResult {
     assignedCount: number;
 }
 
-/** Faixa 4×1: uma célula por quina interna (M3, M6, M12, M9). */
+/** Grade 3×3: quinas L nos cantos e grama no centro + cardinais. */
 export function renderInnerCornerPreviewStrip(
     options: Omit<BorderSetPreviewOptions, 'highlightPreviewCell'> & {
         highlightMask?: number | null;
@@ -345,9 +350,9 @@ export function renderInnerCornerPreviewStrip(
     } = options;
 
     const tilePx = options.tilePx ?? PREVIEW_TILE_PX;
-    const width = INNER_CORNER_PREVIEW_COLS * tilePx;
-    canvas.width = width;
-    canvas.height = tilePx;
+    const size = 3 * tilePx;
+    canvas.width = size;
+    canvas.height = size;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -355,56 +360,79 @@ export function renderInnerCornerPreviewStrip(
     }
 
     ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, width, tilePx);
+    ctx.clearRect(0, 0, size, size);
 
     const maskIndex = buildMaskSourceIndex(cells);
     const missingMasks = new Set<number>();
     let assignedCount = 0;
 
-    INNER_CORNER_4_SLOTS.forEach((meta, col) => {
-        const dx = col * tilePx;
-        const mask = meta.mask;
-        drawStoneBase(ctx, dx, 0, tilePx);
-        drawCellCaption(ctx, dx, 0, tilePx, `L${mask}`);
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 3; x++) {
+            const dx = x * tilePx;
+            const dy = y * tilePx;
 
-        const source = maskIndex.get(mask);
-        if (source) {
-            drawSheetFrame(
-                ctx,
-                image,
-                source.col,
-                source.row,
-                frameWidth,
-                frameHeight,
-                offsetX,
-                offsetY,
-                gapX,
-                gapY,
-                dx,
-                0,
-                tilePx
-            );
-            assignedCount++;
-        } else {
-            missingMasks.add(mask);
-            drawMissingOverlay(ctx, dx, 0, tilePx, mask);
-        }
+            // Centro e cardinais são Grama
+            if ((x === 1 && y === 1) || (x === 1 && y === 0) || (x === 1 && y === 2) || (x === 0 && y === 1) || (x === 2 && y === 1)) {
+                drawGrassFill(ctx, dx, dy, tilePx);
+                drawCellCaption(ctx, dx, dy, tilePx, 'GRAMA');
+                continue;
+            }
 
-        if (highlightMask === mask) {
-            ctx.strokeStyle = '#22c55e';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(dx + 2, 2, tilePx - 4, tilePx - 4);
-            ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
-            ctx.fillRect(dx + 3, 3, tilePx - 6, tilePx - 6);
+            // Cantos são slots de quinas L
+            drawStoneBase(ctx, dx, dy, tilePx);
+
+            let mask = 0;
+            let label = '';
+            if (x === 0 && y === 0) { mask = 6; label = 'L6'; }
+            else if (x === 2 && y === 0) { mask = 12; label = 'L12'; }
+            else if (x === 0 && y === 2) { mask = 3; label = 'L3'; }
+            else if (x === 2 && y === 2) { mask = 9; label = 'L9'; }
+
+            drawCellCaption(ctx, dx, dy, tilePx, label);
+
+            const source = maskIndex.get(mask);
+            if (source) {
+                drawSheetFrame(
+                    ctx,
+                    image,
+                    source.col,
+                    source.row,
+                    frameWidth,
+                    frameHeight,
+                    offsetX,
+                    offsetY,
+                    gapX,
+                    gapY,
+                    dx,
+                    dy,
+                    tilePx
+                );
+                assignedCount++;
+            } else {
+                missingMasks.add(mask);
+                drawMissingOverlay(ctx, dx, dy, tilePx, mask);
+            }
+
+            if (highlightMask === mask) {
+                ctx.strokeStyle = '#22c55e';
+                ctx.lineWidth = 3;
+                ctx.strokeRect(dx + 2, dy + 2, tilePx - 4, tilePx - 4);
+                ctx.fillStyle = 'rgba(34, 197, 94, 0.2)';
+                ctx.fillRect(dx + 3, dy + 3, tilePx - 6, tilePx - 6);
+            }
         }
-    });
+    }
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1;
-    for (let i = 1; i < INNER_CORNER_PREVIEW_COLS; i++) {
+    for (let i = 1; i < 3; i++) {
         ctx.beginPath();
         ctx.moveTo(i * tilePx + 0.5, 0);
-        ctx.lineTo(i * tilePx + 0.5, tilePx);
+        ctx.lineTo(i * tilePx + 0.5, size);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i * tilePx + 0.5);
+        ctx.lineTo(size, i * tilePx + 0.5);
         ctx.stroke();
     }
 
