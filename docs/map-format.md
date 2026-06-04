@@ -81,7 +81,7 @@ Só são serializadas **células pintadas**. Mapa vazio = sem chave `tiles`.
 }
 ```
 
-### Campo `layers` (auto-borda)
+### Campo `layers` (auto-borda e sobreposições)
 
 Camadas esparsas adicionais ao `tiles` (base). Formato igual ao de `tiles`: chave = andar Z, valor = array `{ x, y, id, ref? }`.
 
@@ -94,6 +94,11 @@ Camadas esparsas adicionais ao `tiles` (base). Formato igual ao de `tiles`: chav
   },
   "border": {
     "0": []
+  },
+  "items": {
+    "0": [
+      { "x": 47, "y": 48, "id": 105, "ref": "01_arvore" }
+    ]
   }
 }
 ```
@@ -102,10 +107,11 @@ Camadas esparsas adicionais ao `tiles` (base). Formato igual ao de `tiles`: chav
 |----------|----------|
 | `layers.grass` | Overlay de grama pintada (modo Tibia: base pedra permanece) |
 | `layers.border` | Overlay de borda recalculado; **pode estar vazio** no export se só render dinâmico |
+| `layers.items` | Overlay de itens/natureza (ex: árvores, pedras, decorações). Ficam sobre o chão sem apagá-lo |
 
-- **Save:** `serializeMapDocument` + `formatMapDocumentJson` (`src/engine/mapDocumentFormat.ts`) — incluir `layers` quando não vazios.
-- **Load:** `deserializeMapDocument` → `grassOverlay` / `borderOverlay` em memória.
-- **Undo:** snapshot das três camadas em `main.ts` (`getMapPaintSnapshot`).
+- **Save:** `serializeMapDocument` + `formatMapDocumentJson` (`src/engine/mapDocumentFormat.ts`) — incluir `layers` (grass, border, items) quando não vazios.
+- **Load:** `deserializeMapDocument` → `grassOverlay` / `borderOverlay` / `itemsOverlay` em memória.
+- **Undo:** snapshot de todas as camadas em `main.ts` (`getMapPaintSnapshot`).
 
 ### Campo `tiles`
 
@@ -125,7 +131,7 @@ Camadas esparsas adicionais ao `tiles` (base). Formato igual ao de `tiles`: chav
 Para reduzir ruído, o export **não inclui**:
 
 - `tiles` — se nenhuma célula pintada
-- `layers` — se `grass` e `border` vazios
+- `layers` — se `grass`, `border` e `items` vazios
 - `metadata`, `houses` — se `{}`
 - `spawns`, `portals` — se `[]`
 

@@ -123,6 +123,7 @@ export interface MapDocument {
     layers?: {
         grass?: Record<string, MapTileEntry[]>;
         border?: Record<string, MapTileEntry[]>;
+        items?: Record<string, MapTileEntry[]>;
     };
     spawn: SpawnPoint;
 }
@@ -177,4 +178,6 @@ export interface CollisionQueryContext {
     hasBoatEquipped: boolean;
     /** Overlay de grama — afeta velocidade; colisão continua na base. */
     grassOverlay?: import('./mapPaintLayers').LayerMap;
+    /** Overlay de itens/decorações — afeta colisão e velocidade. */
+    itemsOverlay?: import('./mapPaintLayers').LayerMap;
 }

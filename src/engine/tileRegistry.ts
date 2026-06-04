@@ -23,9 +23,17 @@ export function resolvePaletteCategory(
     }
     if (
         folder === 'nature' ||
+        folder.includes('natureza') ||
         folder.includes('tree') ||
+        folder.includes('arvore') ||
         folder.includes('bush') ||
-        pathLower.includes('/nature/')
+        folder.includes('arbusto') ||
+        folder.includes('planta') ||
+        folder.includes('mato') ||
+        folder.includes('floresta') ||
+        pathLower.includes('/nature/') ||
+        pathLower.includes('/natureza/') ||
+        pathLower.includes('/arvores/')
     ) {
         return 'nature';
     }

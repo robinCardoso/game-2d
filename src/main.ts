@@ -121,6 +121,7 @@ export let TILE_TYPES: import('./engine/types').TileRegistry = {
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
 let grassOverlayMap: LayerMap = createEmptyLayerMap(activeMapSize);
 let borderOverlayMap: LayerMap = createEmptyLayerMap(activeMapSize);
+let itemsOverlayMap: LayerMap = createEmptyLayerMap(activeMapSize);
 let worldMetadata: Record<string, import('./engine/types').TileMetadata> = {};
 let worldHouses: Record<number, import('./engine/types').HouseData> = {};
 let mapSpawn = { x: 50, y: 50, z: 0 };
@@ -142,6 +143,7 @@ function createCollisionContext(): CollisionQueryContext {
         collisionEnabled: !noclip,
         hasBoatEquipped: !!(boatToggle && boatToggle.checked),
         grassOverlay: grassOverlayMap,
+        itemsOverlay: itemsOverlayMap,
     };
 }
 
@@ -303,23 +305,25 @@ function updateHistoryButtons() {
 }
 
 function getMapPaintSnapshot() {
-    return { base: worldMap, grass: grassOverlayMap, border: borderOverlayMap };
+    return { base: worldMap, grass: grassOverlayMap, border: borderOverlayMap, items: itemsOverlayMap };
 }
 
 function applyMapPaintSnapshot(snapshot: {
     base: WorldMap;
     grass: LayerMap;
     border: LayerMap;
+    items: LayerMap;
 }): void {
     worldMap = snapshot.base;
     grassOverlayMap = snapshot.grass;
     borderOverlayMap = snapshot.border;
+    itemsOverlayMap = snapshot.items;
     invalidateBorderDrawCache();
     markMinimapDirty();
 }
 
 function saveState() {
-    history.saveState(worldMap, grassOverlayMap, borderOverlayMap);
+    history.saveState(worldMap, grassOverlayMap, borderOverlayMap, itemsOverlayMap);
     updateHistoryButtons();
 }
 
@@ -1115,6 +1119,14 @@ function placeTileAt(
         borderAfterRecalc: number;
     }> = [];
 
+    const tileProps = TILE_TYPES[resolvedId];
+    const isOverlayTile = tileProps && (
+        tileProps.paletteCategory === 'nature' || 
+        tileProps.paletteCategory === 'items' || 
+        tileProps.paletteCategory === 'walls' ||
+        tileProps.assetType === 'items'
+    );
+
     let minX = x;
     let minY = y;
     let maxX = x;
@@ -1134,10 +1146,15 @@ function placeTileAt(
             // mesmo sem base (comportamento estilo Tibia).
             setLayerCell(grassOverlayMap, z, px, py, resolvedId, activeMapSize);
             clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+        } else if (isOverlayTile) {
+            // Nature/items/walls go to the items overlay layer!
+            setLayerCell(itemsOverlayMap, z, px, py, resolvedId, activeMapSize);
+            if (z === player.worldZ) markMinimapDirty();
         } else {
             worldMap[z][py][px] = resolvedId;
             clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
             clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
+            clearLayerCell(itemsOverlayMap, z, px, py, activeMapSize);
             if (z === player.worldZ) markMinimapDirty();
         }
 
@@ -1210,12 +1227,17 @@ function eraseTileAt(
         maxX = Math.max(maxX, px);
         maxY = Math.max(maxY, py);
 
-        const grassId = getLayerCell(grassOverlayMap, z, px, py);
-        if (grassId !== emptyId) {
-            clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
-            touchedGrass = true;
+        const itemId = getLayerCell(itemsOverlayMap, z, px, py);
+        if (itemId !== emptyId) {
+            clearLayerCell(itemsOverlayMap, z, px, py, activeMapSize);
+        } else {
+            const grassId = getLayerCell(grassOverlayMap, z, px, py);
+            if (grassId !== emptyId) {
+                clearLayerCell(grassOverlayMap, z, px, py, activeMapSize);
+                touchedGrass = true;
+            }
+            worldMap[z][py][px] = emptyId;
         }
-        worldMap[z][py][px] = emptyId;
         clearLayerCell(borderOverlayMap, z, px, py, activeMapSize);
         if (z === player.worldZ) markMinimapDirty();
     }
@@ -1376,6 +1398,7 @@ async function reloadTileRegistry(): Promise<void> {
               mapId: currentMapId,
               grassOverlay: grassOverlayMap,
               borderOverlay: borderOverlayMap,
+              itemsOverlay: itemsOverlayMap,
           })
         : null;
 
@@ -1388,6 +1411,7 @@ async function reloadTileRegistry(): Promise<void> {
         worldMap = ensureAllFloors(remapped.worldMap, activeMapSize);
         grassOverlayMap = remapped.grassOverlay ?? createEmptyLayerMap(activeMapSize);
         borderOverlayMap = remapped.borderOverlay ?? createEmptyLayerMap(activeMapSize);
+        itemsOverlayMap = remapped.itemsOverlay ?? createEmptyLayerMap(activeMapSize);
         invalidateBorderDrawCache();
         markMinimapDirty();
     }
@@ -1960,6 +1984,7 @@ function buildCurrentMapDocument() {
         tileRegistry: TILE_TYPES,
         grassOverlay: grassOverlayMap,
         borderOverlay: borderOverlayMap,
+        itemsOverlay: itemsOverlayMap,
     });
 }
 
@@ -2091,6 +2116,7 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>) {
     worldMap = ensureAllFloors(loaded.worldMap, mapSize);
     grassOverlayMap = loaded.grassOverlay ?? createEmptyLayerMap(mapSize);
     borderOverlayMap = loaded.borderOverlay ?? createEmptyLayerMap(mapSize);
+    itemsOverlayMap = loaded.itemsOverlay ?? createEmptyLayerMap(mapSize);
     setActiveMapSize(mapSize);
     worldMetadata = loaded.metadata || {};
     worldHouses = loaded.houses || {};
@@ -2151,6 +2177,9 @@ function duplicateFromCurrent(entry: MapEntry) {
         spawns: worldSpawns,
         portals: worldPortals,
         tileRegistry: TILE_TYPES,
+        grassOverlay: grassOverlayMap,
+        borderOverlay: borderOverlayMap,
+        itemsOverlay: itemsOverlayMap,
     });
     const loaded = loadMapFromJson(doc, mapSpawn, TILE_TYPES);
     registerMap(entry);
@@ -2475,26 +2504,26 @@ function draw() {
         }
         ctx.globalAlpha = (isAbove && playerUnder) ? 0.3 : 1.0;
 
+        const drawTileLayer = (tid: number, tx: number, ty: number) => {
+            if (tid === -1 || isVariantBrush(tid)) return;
+            const tile = TILE_TYPES[tid];
+            if (tile?.image?.complete) {
+                drawRegistryTile(
+                    ctx,
+                    tile,
+                    tx * TILE_SIZE_SCREEN - camX,
+                    ty * TILE_SIZE_SCREEN - camY,
+                    TILE_SIZE_SCREEN
+                );
+            }
+        };
+
+        // Pass 1: Renderizar toda a camada de chão (chão base, grama e bordas)
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                const drawTileLayer = (tid: number) => {
-                    if (tid === -1 || isVariantBrush(tid)) return;
-                    const tile = TILE_TYPES[tid];
-                    if (tile?.image?.complete) {
-                        drawRegistryTile(
-                            ctx,
-                            tile,
-                            x * TILE_SIZE_SCREEN - camX,
-                            y * TILE_SIZE_SCREEN - camY,
-                            TILE_SIZE_SCREEN
-                        );
-                    }
-                };
-
-                drawTileLayer(worldMap[z][y][x]);
+                drawTileLayer(worldMap[z][y][x], x, y);
                 const grassTid = getLayerCell(grassOverlayMap, z, x, y);
-                drawTileLayer(grassTid);
-                // Segurança visual: nunca desenhar borda por cima de célula com grama.
+                drawTileLayer(grassTid, x, y);
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
                     for (const borderTid of collectBorderDrawTileIdsCached(
                         borderDrawCtx,
@@ -2503,10 +2532,18 @@ function draw() {
                         y,
                         borderMaskIndex
                     )) {
-                        drawTileLayer(borderTid);
+                        drawTileLayer(borderTid, x, y);
                     }
                 }
-                
+            }
+        }
+
+        // Pass 2: Renderizar itens de sobreposição (árvores, decorações, etc.) e marcações de edição
+        for (let y = startY; y <= endY; y++) {
+            for (let x = startX; x <= endX; x++) {
+                const itemTid = getLayerCell(itemsOverlayMap, z, x, y);
+                drawTileLayer(itemTid, x, y);
+
                 if (activeMapEditorTab === 'zones') {
                     const meta = worldMetadata[`${z}_${y}_${x}`];
                     if (meta && meta.zoneId && meta.zoneId > 0) {

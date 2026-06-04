@@ -84,16 +84,23 @@ function groupLayerSparseByFloor(
 export function serializeLayerMaps(
     grass: LayerMap,
     border: LayerMap,
+    items: LayerMap,
     size: number
 ): MapDocument['layers'] | undefined {
     const grassTiles = groupLayerSparseByFloor(grass, size);
     const borderTiles = groupLayerSparseByFloor(border, size);
-    if (Object.keys(grassTiles).length === 0 && Object.keys(borderTiles).length === 0) {
+    const itemsTiles = groupLayerSparseByFloor(items, size);
+    if (
+        Object.keys(grassTiles).length === 0 &&
+        Object.keys(borderTiles).length === 0 &&
+        Object.keys(itemsTiles).length === 0
+    ) {
         return undefined;
     }
     const out: NonNullable<MapDocument['layers']> = {};
     if (Object.keys(grassTiles).length > 0) out.grass = grassTiles;
     if (Object.keys(borderTiles).length > 0) out.border = borderTiles;
+    if (Object.keys(itemsTiles).length > 0) out.items = itemsTiles;
     return out;
 }
 
@@ -119,10 +126,11 @@ export function deserializeLayerMaps(
     doc: MapDocument,
     size: number,
     tileRegistry?: TileRegistry
-): { grass: LayerMap; border: LayerMap } {
+): { grass: LayerMap; border: LayerMap; items: LayerMap } {
     const emptyId = EMPTY_TILE_ID;
     let grassTiles = doc.layers?.grass;
     let borderTiles = doc.layers?.border;
+    let itemsTiles = doc.layers?.items;
 
     if (tileRegistry && doc.tileRefs) {
         if (grassTiles) {
@@ -131,11 +139,15 @@ export function deserializeLayerMaps(
         if (borderTiles) {
             borderTiles = resolveLayerTilesByFloor(borderTiles, doc.tileRefs, tileRegistry);
         }
+        if (itemsTiles) {
+            itemsTiles = resolveLayerTilesByFloor(itemsTiles, doc.tileRefs, tileRegistry);
+        }
     }
 
     return {
         grass: layerFromTilesByFloor(grassTiles, size, emptyId),
         border: layerFromTilesByFloor(borderTiles, size, emptyId),
+        items: layerFromTilesByFloor(itemsTiles, size, emptyId),
     };
 }
 

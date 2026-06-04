@@ -989,10 +989,21 @@ export function initMapSpriteEditor() {
                 const selRow = result.selectedFrameRow ?? 0;
                 const targetSize = ENGINE_CONFIG.TILE_SIZE;
 
-                // Recorta o frame selecionado e redimensiona para TILE_SIZE
+                let keepOriginal = false;
+                if (result.frameWidth !== targetSize || result.frameHeight !== targetSize) {
+                    keepOriginal = await popup.confirm(
+                        `O frame calibrado tem tamanho ${result.frameWidth}×${result.frameHeight} px.<br><br>Deseja <strong>manter o tamanho original</strong> para renderizar o sprite como foi criado, ou redimensioná-lo para 32×32 px?`,
+                        'Manter tamanho original?'
+                    );
+                }
+
+                const finalWidth = keepOriginal ? result.frameWidth : targetSize;
+                const finalHeight = keepOriginal ? result.frameHeight : targetSize;
+
+                // Recorta o frame selecionado
                 const cropCanvas = document.createElement('canvas');
-                cropCanvas.width = targetSize;
-                cropCanvas.height = targetSize;
+                cropCanvas.width = finalWidth;
+                cropCanvas.height = finalHeight;
                 const cropCtx = cropCanvas.getContext('2d');
                 if (cropCtx && processedImage) {
                     const sx = result.offsetX + selCol * (result.frameWidth + result.gapX);
@@ -1004,7 +1015,7 @@ export function initMapSpriteEditor() {
                     cropCtx.drawImage(
                         processedImage,
                         sx, sy, result.frameWidth, result.frameHeight,
-                        0, 0, targetSize, targetSize
+                        0, 0, finalWidth, finalHeight
                     );
 
                     const croppedBase64 = cropCanvas.toDataURL('image/png');
@@ -1017,15 +1028,15 @@ export function initMapSpriteEditor() {
                     });
                     
                     await applyChromaProcessing();
-
-                    // Reseta inputs de fatiamento para o frame único já recortado e redimensionado
-                    frameWidthInput.value = targetSize.toString();
-                    frameHeightInput.value = targetSize.toString();
+                    
+                    // Reseta inputs de fatiamento para o frame único já recortado
+                    frameWidthInput.value = finalWidth.toString();
+                    frameHeightInput.value = finalHeight.toString();
                     offsetXInput.value = '0';
                     offsetYInput.value = '0';
                     currentCalibration = {
-                        frameWidth: targetSize,
-                        frameHeight: targetSize,
+                        frameWidth: finalWidth,
+                        frameHeight: finalHeight,
                         offsetX: 0,
                         offsetY: 0,
                         gapX: 0,
@@ -1035,7 +1046,7 @@ export function initMapSpriteEditor() {
                         sheetLayout: 'horizontal',
                     };
                     
-                    toast.success(`Recortado para ${targetSize}×${targetSize} px! (Col ${selCol + 1}, Linha ${selRow + 1})`);
+                    toast.success(`Recortado para ${finalWidth}×${finalHeight} px! (Col ${selCol + 1}, Linha ${selRow + 1})`);
                 } else {
                     frameWidthInput.value = result.frameWidth.toString();
                     frameHeightInput.value = result.frameHeight.toString();

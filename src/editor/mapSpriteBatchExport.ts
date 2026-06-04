@@ -71,15 +71,16 @@ function cropFrameToDataUrl(
     sy: number,
     frameWidth: number,
     frameHeight: number,
-    targetSize: number
+    targetW: number,
+    targetH: number
 ): string {
     const canvas = document.createElement('canvas');
-    canvas.width = targetSize;
-    canvas.height = targetSize;
+    canvas.width = targetW;
+    canvas.height = targetH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return '';
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(image, sx, sy, frameWidth, frameHeight, 0, 0, targetSize, targetSize);
+    ctx.drawImage(image, sx, sy, frameWidth, frameHeight, 0, 0, targetW, targetH);
     return canvas.toDataURL('image/png');
 }
 
@@ -139,11 +140,12 @@ function buildVariantStripDataUrl(
     image: HTMLImageElement,
     calibration: MapSpriteBatchCalibration,
     frames: MapSpriteFramePosition[],
-    targetSize: number
+    targetW: number,
+    targetH: number
 ): string {
     const canvas = document.createElement('canvas');
-    canvas.width = frames.length * targetSize;
-    canvas.height = targetSize;
+    canvas.width = frames.length * targetW;
+    canvas.height = targetH;
     const ctx = canvas.getContext('2d');
     if (!ctx) return '';
     ctx.imageSmoothingEnabled = false;
@@ -159,10 +161,10 @@ function buildVariantStripDataUrl(
             sy,
             calibration.frameWidth,
             calibration.frameHeight,
-            index * targetSize,
+            index * targetW,
             0,
-            targetSize,
-            targetSize
+            targetW,
+            targetH
         );
     });
 
@@ -178,6 +180,8 @@ async function saveVariantStripSprite(options: {
     walkable: boolean;
     speedModifier: number;
     includeVariantGroup: boolean;
+    frameWidth: number;
+    frameHeight: number;
 }): Promise<void> {
     const filename = `${options.stripBaseName}_variants`;
     const group = options.includeVariantGroup
@@ -189,8 +193,8 @@ async function saveVariantStripSprite(options: {
         speedModifier: options.speedModifier,
         isStair: false,
         variantStripFrames: options.frameCount,
-        frameWidth: ENGINE_CONFIG.TILE_SIZE,
-        frameHeight: ENGINE_CONFIG.TILE_SIZE,
+        frameWidth: options.frameWidth,
+        frameHeight: options.frameHeight,
         gridCols: options.frameCount,
         gridRows: 1,
         offsetX: 0,
@@ -242,12 +246,25 @@ export async function exportSelectedVariantStrip(options: {
     }
 
     const targetSize = ENGINE_CONFIG.TILE_SIZE;
+    const isCustomSize = options.calibration.frameWidth !== targetSize || options.calibration.frameHeight !== targetSize;
+    let keepOriginal = false;
+    if (isCustomSize) {
+        keepOriginal = await popup.confirm(
+            `As variantes selecionadas têm tamanho ${options.calibration.frameWidth}×${options.calibration.frameHeight} px.<br><br>Deseja <strong>manter o tamanho original</strong> no PNG exportado, ou redimensioná-las para 32×32 px?`,
+            'Manter tamanho original?'
+        );
+    }
+
+    const finalWidth = keepOriginal ? options.calibration.frameWidth : targetSize;
+    const finalHeight = keepOriginal ? options.calibration.frameHeight : targetSize;
+
     const stripBaseName = resolveStripBaseName(options.namePrefix, options.variantGroup);
     const spriteBase64 = buildVariantStripDataUrl(
         options.image,
         options.calibration,
         frames,
-        targetSize
+        finalWidth,
+        finalHeight
     );
 
     if (!spriteBase64) {
@@ -263,6 +280,8 @@ export async function exportSelectedVariantStrip(options: {
         walkable: options.walkable,
         speedModifier: options.speedModifier,
         includeVariantGroup: options.includeVariantGroup,
+        frameWidth: finalWidth,
+        frameHeight: finalHeight,
     });
 
     return { frameCount: frames.length, fileName: `${stripBaseName}_variants` };
@@ -319,6 +338,17 @@ export async function exportMapSpriteFrames(options: {
     } = options;
 
     const targetSize = ENGINE_CONFIG.TILE_SIZE;
+    const isCustomSize = calibration.frameWidth !== targetSize || calibration.frameHeight !== targetSize;
+    let keepOriginal = false;
+    if (isCustomSize) {
+        keepOriginal = await popup.confirm(
+            `Os frames da grade têm tamanho ${calibration.frameWidth}×${calibration.frameHeight} px.<br><br>Deseja <strong>manter o tamanho original</strong> para todos os arquivos exportados ou redimensioná-los para 32×32 px?`,
+            'Manter tamanho original?'
+        );
+    }
+
+    const finalWidth = keepOriginal ? calibration.frameWidth : targetSize;
+    const finalHeight = keepOriginal ? calibration.frameHeight : targetSize;
 
     const framesToExport: MapSpriteFramePosition[] =
         selectedFrames && selectedFrames.length > 0
@@ -377,7 +407,8 @@ export async function exportMapSpriteFrames(options: {
             sy,
             calibration.frameWidth,
             calibration.frameHeight,
-            targetSize
+            finalWidth,
+            finalHeight
         );
 
         if (!spriteBase64) {
@@ -390,6 +421,8 @@ export async function exportMapSpriteFrames(options: {
             walkable,
             speedModifier,
             isStair: false,
+            frameWidth: finalWidth,
+            frameHeight: finalHeight,
         };
         if (group) {
             properties.variantGroup = group;

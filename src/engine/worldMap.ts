@@ -143,6 +143,7 @@ export function serializeMapDocument(
         tileRegistry?: TileRegistry;
         grassOverlay?: LayerMap;
         borderOverlay?: LayerMap;
+        itemsOverlay?: LayerMap;
     } = {}
 ): MapDocument {
     const size = options.size ?? MAP_SIZE;
@@ -180,6 +181,7 @@ export function serializeMapDocument(
     const layerDoc = serializeLayerMaps(
         options.grassOverlay ?? {},
         options.borderOverlay ?? {},
+        options.itemsOverlay ?? {},
         size
     );
     if (layerDoc) {
@@ -191,11 +193,17 @@ export function serializeMapDocument(
             if (doc.layers.border) {
                 doc.layers.border = enrichTilesWithRefs(doc.layers.border, options.tileRegistry);
             }
+            if (doc.layers.items) {
+                doc.layers.items = enrichTilesWithRefs(doc.layers.items, options.tileRegistry);
+            }
             const layerIds = new Set<number>();
             for (const floor of Object.values(doc.layers.grass ?? {})) {
                 for (const e of floor) layerIds.add(e.id);
             }
             for (const floor of Object.values(doc.layers.border ?? {})) {
+                for (const e of floor) layerIds.add(e.id);
+            }
+            for (const floor of Object.values(doc.layers.items ?? {})) {
                 for (const e of floor) layerIds.add(e.id);
             }
             if (layerIds.size > 0 && options.tileRegistry) {
@@ -307,12 +315,13 @@ export function loadMapFromJson(
 
         const worldMap = deserializeMapDocument(docForParse, tileRegistry);
         repairWorldMapGrids(worldMap, mapSize);
-        const { grass, border } = deserializeLayerMaps(docForParse, mapSize, tileRegistry);
+        const { grass, border, items } = deserializeLayerMaps(docForParse, mapSize, tileRegistry);
 
         return {
             worldMap,
             grassOverlay: grass,
             borderOverlay: border,
+            itemsOverlay: items,
             spawn: sanitizeSpawnPoint(
                 doc.spawn,
                 fallbackSpawn ?? { x: 50, y: 50, z: 0 },

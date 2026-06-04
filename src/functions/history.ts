@@ -8,6 +8,7 @@ export interface MapPaintSnapshot {
     base: WorldMap;
     grass: LayerMap;
     border: LayerMap;
+    items: LayerMap;
 }
 
 export function cloneWorldMap(map: WorldMap): WorldMap {
@@ -26,6 +27,7 @@ export function cloneMapPaintSnapshot(snapshot: MapPaintSnapshot): MapPaintSnaps
         base: cloneWorldMap(snapshot.base),
         grass: cloneLayerMap(snapshot.grass),
         border: cloneLayerMap(snapshot.border),
+        items: cloneLayerMap(snapshot.items),
     };
 }
 
@@ -34,9 +36,9 @@ export class HistoryManager {
     private redoStack: MapPaintSnapshot[] = [];
     private maxStates: number = 50;
 
-    public saveState(base: WorldMap, grass: LayerMap = {}, border: LayerMap = {}) {
+    public saveState(base: WorldMap, grass: LayerMap = {}, border: LayerMap = {}, items: LayerMap = {}) {
         this.undoStack.push(
-            cloneMapPaintSnapshot({ base, grass, border })
+            cloneMapPaintSnapshot({ base, grass, border, items })
         );
         this.redoStack = [];
 

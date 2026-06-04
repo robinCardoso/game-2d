@@ -1,6 +1,8 @@
 import { getBaseTerrainTileAt, getSpeedTerrainTileAt } from './terrain';
-import type { CollisionQueryContext, WalkProbeResult } from './types';
+import type { CollisionQueryContext, WalkProbeResult, RegistryTile } from './types';
 import { collisionHitboxSize, ENGINE_CONFIG } from './config';
+import { getLayerCell } from './mapPaintLayers';
+import { getTileFromRegistry } from './tileRegistry';
 
 const { EMPTY_TILE_ID } = ENGINE_CONFIG;
 
@@ -52,21 +54,34 @@ export function queryWalkable(
             const tile = getBaseTerrainTileAt(ctx, tx, ty, z);
             const speedTile = getSpeedTerrainTileAt(ctx, tx, ty, z);
 
-            if (tile) {
-                speedModSum += speedTile?.speedModifier ?? tile.speedModifier ?? 1.0;
+            let itemTile: RegistryTile | undefined;
+            if (ctx.itemsOverlay) {
+                const itemId = getLayerCell(ctx.itemsOverlay, z, tx, ty);
+                if (itemId !== EMPTY_TILE_ID) {
+                    itemTile = getTileFromRegistry(ctx.tileRegistry, itemId);
+                }
+            }
+
+            if (tile || itemTile) {
+                const walkable = (itemTile?.walkable !== false) && (tile ? tile.walkable !== false : true);
+                const swimable = itemTile?.swimable ?? tile?.swimable ?? false;
+                const speedModifier = itemTile?.speedModifier ?? speedTile?.speedModifier ?? tile?.speedModifier ?? 1.0;
+
+                speedModSum += speedModifier;
                 count++;
 
-                if (tile.swimable) {
+                if (swimable) {
                     if (!ctx.hasBoatEquipped) {
                         waterCollision = true;
                     }
-                } else if (tile.walkable === false) {
+                } else if (walkable === false) {
                     wallCollision = true;
                 }
 
-                if (tile.isStair) {
+                const isStair = itemTile?.isStair ?? tile?.isStair ?? false;
+                if (isStair) {
                     stairFound = true;
-                    stairDir = tile.stairDirection;
+                    stairDir = itemTile?.stairDirection ?? tile?.stairDirection;
                 }
             } else {
                 wallCollision = true;

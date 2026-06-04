@@ -56,6 +56,7 @@ let activeMapSize: number = ENGINE_CONFIG.MAP_SIZE;
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
 let grassOverlayMap: LayerMap = createEmptyLayerMap();
 let borderOverlayMap: LayerMap = createEmptyLayerMap();
+let itemsOverlayMap: LayerMap = createEmptyLayerMap();
 let worldSpawns: import('../engine/types').CreatureSpawn[] = [];
 let worldPortals: PortalData[] = [];
 let currentMapId: string | undefined;
@@ -104,6 +105,7 @@ function createCollisionContext(): CollisionQueryContext {
         collisionEnabled: true,
         hasBoatEquipped: false,
         grassOverlay: grassOverlayMap,
+        itemsOverlay: itemsOverlayMap,
     };
 }
 
@@ -172,6 +174,7 @@ function applyLoadedMap(loaded: ReturnType<typeof loadMapFromJson>): void {
     worldMap = ensureAllFloors(loaded.worldMap, mapSize);
     grassOverlayMap = loaded.grassOverlay ?? createEmptyLayerMap(mapSize);
     borderOverlayMap = loaded.borderOverlay ?? createEmptyLayerMap(mapSize);
+    itemsOverlayMap = loaded.itemsOverlay ?? createEmptyLayerMap(mapSize);
     setActiveMapSize(mapSize);
     worldSpawns.length = 0;
     worldSpawns.push(...(loaded.spawns || []));
@@ -358,23 +361,25 @@ function draw(): void {
         const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE_SCREEN));
         const endY = Math.min(activeMapSize - 1, Math.floor((camera.y + canvas.height) / TILE_SIZE_SCREEN));
 
+        const drawLayerTile = (tid: number | undefined, tx: number, ty: number) => {
+            if (tid === undefined || tid === -1) return;
+            const tile = TILE_TYPES[tid];
+            if (tile?.image?.complete) {
+                drawRegistryTile(
+                    ctx,
+                    tile,
+                    tx * TILE_SIZE_SCREEN - camera.x,
+                    ty * TILE_SIZE_SCREEN - camera.y,
+                    TILE_SIZE_SCREEN
+                );
+            }
+        };
+
+        // Pass 1: Draw ground layer
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                const drawLayerTile = (tid: number | undefined) => {
-                    if (tid === undefined || tid === -1) return;
-                    const tile = TILE_TYPES[tid];
-                    if (tile?.image?.complete) {
-                        drawRegistryTile(
-                            ctx,
-                            tile,
-                            x * TILE_SIZE_SCREEN - camera.x,
-                            y * TILE_SIZE_SCREEN - camera.y,
-                            TILE_SIZE_SCREEN
-                        );
-                    }
-                };
-                drawLayerTile(worldMap[z]?.[y]?.[x]);
-                drawLayerTile(getLayerCell(grassOverlayMap, z, x, y));
+                drawLayerTile(worldMap[z]?.[y]?.[x], x, y);
+                drawLayerTile(getLayerCell(grassOverlayMap, z, x, y), x, y);
                 const grassTid = getLayerCell(grassOverlayMap, z, x, y);
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
                     for (const borderTid of collectBorderDrawTileIdsCached(
@@ -384,9 +389,16 @@ function draw(): void {
                         y,
                         borderMaskIndex
                     )) {
-                        drawLayerTile(borderTid);
+                        drawLayerTile(borderTid, x, y);
                     }
                 }
+            }
+        }
+
+        // Pass 2: Draw items layer and interactive spots
+        for (let y = startY; y <= endY; y++) {
+            for (let x = startX; x <= endX; x++) {
+                drawLayerTile(getLayerCell(itemsOverlayMap, z, x, y), x, y);
                 const portal = worldPortals.find((p) => p.tileX === x && p.tileY === y && p.tileZ === z);
                 if (portal && z === player.worldZ) {
                     const pulse = (Math.sin(Date.now() / 400) + 1) / 2;

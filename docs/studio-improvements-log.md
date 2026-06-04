@@ -368,10 +368,30 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 
 ---
 
-## 16. Referências
+## 16. Suporte a Sprites Grandes e Camada de Natureza / Itens (2026-06-04)
+
+### Renderização em Duas Passadas (Depth / Sorting) e Calibração de Sprites Grandes
+- **Arquivos:** `src/main.ts`, `src/game/playApp.ts`, `src/engine/tileDraw.ts`, `src/engine/collision.ts`, `src/editor/mapSpriteEditor.ts`, `src/editor/mapSpriteBatchExport.ts`, `src/engine/mapPaintLayers.ts`
+- **Problema:** 
+  1. Ao calibrar sprites maiores que 32x32px (como árvores de 64x64px), o sistema tentava redimensioná-los ou desenhá-los de maneira desalinhada.
+  2. Ao desenhar o mapa, o motor renderizava o chão, gramas, bordas e decorações de cada célula no mesmo loop. Isso fazia com que o chão desenhado nas células à direita (ex: `x+1`) passasse por cima e cortasse verticalmente a metade direita de sprites grandes desenhados na célula anterior `x`.
+  3. Colocar uma árvore ou pedra no mapa apagava/substituía o chão de grama por baixo dela, pois tudo ficava na camada base.
+- **Solução:**
+  1. **Calibrador Visual & Batch Export:** Permite ao usuário escolher se deseja manter o tamanho original ou redimensionar para 32x32px ao salvar sprites maiores. As propriedades `frameWidth` e `frameHeight` são salvas no catálogo de metadados.
+  2. **Renderização Bottom-Center (`tileDraw.ts`):** O motor de desenho agora calcula o tamanho real do frame e desenha o sprite centralizado horizontalmente e alinhado na base inferior da coordenada correspondente (âncora bottom-center).
+  3. **Camada de Sobreposição de Itens (`items`):** Adicionada a camada `itemsOverlayMap` (serializada no JSON do mapa como `layers.items`). Tiles da paleta nas abas `NATUREZA`, `PAREDES` e `ITENS` são pintados automaticamente nesta camada, preservando o chão original intacto por baixo. A borracha (Eraser) remove primeiro a decoração na camada superior e, num segundo clique, o chão base.
+  4. **Renderização em Duas Passadas:** O loop de desenho do Studio (`main.ts`) e do jogo (`playApp.ts`) foi refatorado:
+     - **Passo 1:** Desenha todo o chão base, gramas e bordas de todas as células visíveis.
+     - **Passo 2:** Desenha todos os itens decorativos/árvores por cima. Isso elimina qualquer corte lateral decorrente de blocos de chão adjacentes.
+  5. **Combinação de Colisões (`collision.ts`):** A lógica de colisão (`queryWalkable`) mescla as propriedades físicas do chão base e do item de sobreposição. Se uma árvore for não caminhável, o personagem colide com sua célula base, mesmo que haja grama caminhável abaixo.
+
+---
+
+## 17. Referências
 
 - [auto-border.md](./auto-border.md) — motor, UI, máscaras
 - [sprite-exporter-walkthrough.md](./sprite-exporter-walkthrough.md)
 - [map-format.md](./map-format.md) — `layers`, `ref`, tileRefs
 - [architecture.md](./architecture.md)
 - Regra Cursor: `.cursor/rules/studio-map-sprites.mdc`
+- AGENTS.md — guia para agentes IA

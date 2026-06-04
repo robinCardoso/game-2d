@@ -38,6 +38,26 @@ function getBorderTileCanvas(tile: RegistryTile, size: number): HTMLCanvasElemen
     return canvas;
 }
 
+export function getTileDrawSize(tile: RegistryTile, defaultSize: number): { w: number; h: number } {
+    if (tile.sourceRect) {
+        return { w: tile.sourceRect.w, h: tile.sourceRect.h };
+    }
+    const fw = Number(tile.frameWidth || tile.width);
+    const fh = Number(tile.frameHeight || tile.height);
+    if (fw > 0 && fh > 0) {
+        return { w: fw, h: fh };
+    }
+    const img = tile.image;
+    if (img && img.complete) {
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+        if (nw > 0 && nh > 0) {
+            return { w: nw, h: nh };
+        }
+    }
+    return { w: defaultSize, h: defaultSize };
+}
+
 /** Desenha tile do registro (suporta fatia de variant strip). */
 export function drawRegistryTile(
     ctx: CanvasRenderingContext2D,
@@ -46,10 +66,14 @@ export function drawRegistryTile(
     dy: number,
     size: number
 ): void {
+    const { w: tw, h: th } = getTileDrawSize(tile, size);
+    const drawX = Math.round(dx + (size - tw) / 2);
+    const drawY = Math.round(dy + (size - th));
+
     if (tile.assetType === 'border' || tile.paletteCategory === 'border') {
         const borderCanvas = getBorderTileCanvas(tile, size);
         if (borderCanvas) {
-            ctx.drawImage(borderCanvas, Math.round(dx), Math.round(dy));
+            ctx.drawImage(borderCanvas, drawX, drawY);
             return;
         }
     }
@@ -59,9 +83,9 @@ export function drawRegistryTile(
 
     const sr = tile.sourceRect;
     if (sr) {
-        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, Math.round(dx), Math.round(dy), size, size);
+        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, drawX, drawY, tw, th);
     } else {
-        ctx.drawImage(img, Math.round(dx), Math.round(dy), size, size);
+        ctx.drawImage(img, drawX, drawY, tw, th);
     }
 }
 

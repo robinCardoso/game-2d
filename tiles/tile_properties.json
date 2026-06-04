@@ -212,5 +212,22 @@
     "gridCols": 18,
     "gridRows": 1,
     "sheetLayout": "horizontal"
+  },
+  "01_arvore": {
+    "walkable": false,
+    "speedModifier": 1,
+    "isStair": false,
+    "nameOverride": "01-arvore",
+    "assetType": "terrain",
+    "variantGroup": "tree",
+    "frameWidth": 64,
+    "frameHeight": 64,
+    "offsetX": 0,
+    "offsetY": 0,
+    "gapX": 0,
+    "gapY": 0,
+    "gridCols": 1,
+    "gridRows": 1,
+    "sheetLayout": "horizontal"
   }
 }
