@@ -37,6 +37,9 @@ export interface TileProperties {
     gapX?: number;
     gapY?: number;
     sheetLayout?: string;
+    /** Ajuste fino de ancoragem no tile (mesmo modelo dos personagens). */
+    anchorX?: number;
+    anchorY?: number;
 }
 
 export const TILE_CONFIG: Record<string, TileProperties> = {

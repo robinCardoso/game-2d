@@ -3,13 +3,43 @@ import type { Gender, VocationId } from '../../shared/types/character';
 import { createDefaultCharacterConfig } from '../character/characterSerializer';
 import { MAX_CHARACTERS_PER_ACCOUNT } from './types';
 import { DEFAULT_GAME_CONFIG } from '../game-data/default/game.config';
+import {
+    createMockPasswordSalt,
+    hashMockPassword,
+    verifyMockPassword,
+} from './mockPassword';
 
+/**
+ * Persistência mock (localStorage) em dev:
+ * - game2d_mock_accounts   → e-mail, userId, hash da senha (PBKDF2)
+ * - game2d_mock_session      → sessão ativa { userId, email }
+ * - game2d_mock_profile      → perfil da sessão (role, studio)
+ * - game2d_mock_characters   → personagens (posição, mapa, outfit, etc.)
+ */
 const SESSION_KEY = 'game2d_mock_session';
 const PROFILE_KEY = 'game2d_mock_profile';
 const CHARS_KEY = 'game2d_mock_characters';
+const ACCOUNTS_KEY = 'game2d_mock_accounts';
+
+interface MockAccountRecord {
+    userId: string;
+    email: string;
+    passwordHash: string;
+    salt: string;
+    createdAt: string;
+}
 
 function uid(): string {
     return `mock_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
+}
+
+function userIdFromEmail(email: string): string {
+    const cleanEmail = normalizeEmail(email).replace(/[^a-zA-Z0-9]/g, '_');
+    return `mock_user_${cleanEmail}`;
 }
 
 export function isMockAuthEnabled(): boolean {
@@ -18,21 +48,100 @@ export function isMockAuthEnabled(): boolean {
     return !import.meta.env.VITE_SUPABASE_URL;
 }
 
+function readAccounts(): Record<string, MockAccountRecord> {
+    try {
+        const raw = localStorage.getItem(ACCOUNTS_KEY);
+        return raw ? (JSON.parse(raw) as Record<string, MockAccountRecord>) : {};
+    } catch {
+        return {};
+    }
+}
+
+function writeAccounts(accounts: Record<string, MockAccountRecord>): void {
+    localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+}
+
+async function registerMockAccount(email: string, password: string): Promise<MockAccountRecord> {
+    const normalizedEmail = normalizeEmail(email);
+    const accounts = readAccounts();
+    if (accounts[normalizedEmail]) {
+        throw new Error('E-mail já cadastrado.');
+    }
+    const salt = createMockPasswordSalt();
+    const passwordHash = await hashMockPassword(password, salt);
+    const record: MockAccountRecord = {
+        userId: userIdFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        passwordHash,
+        salt,
+        createdAt: new Date().toISOString(),
+    };
+    accounts[normalizedEmail] = record;
+    writeAccounts(accounts);
+    return record;
+}
+
+async function resolveMockAccount(email: string, password: string): Promise<MockAccountRecord> {
+    const normalizedEmail = normalizeEmail(email);
+    const accounts = readAccounts();
+    const existing = accounts[normalizedEmail];
+    if (existing) {
+        const valid = await verifyMockPassword(password, existing.salt, existing.passwordHash);
+        if (!valid) {
+            throw new Error('E-mail ou senha incorretos.');
+        }
+        return existing;
+    }
+
+    // Conta legada (antes do hash de senha): registra credencial na primeira entrada.
+    const salt = createMockPasswordSalt();
+    const passwordHash = await hashMockPassword(password, salt);
+    const record: MockAccountRecord = {
+        userId: userIdFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        passwordHash,
+        salt,
+        createdAt: new Date().toISOString(),
+    };
+    accounts[normalizedEmail] = record;
+    writeAccounts(accounts);
+    return record;
+}
+
+function buildProfile(userId: string, email: string): UserProfile {
+    const studio = email.endsWith('@gm.dev') || import.meta.env.VITE_MOCK_STUDIO === 'true';
+    return {
+        id: userId,
+        displayName: email.split('@')[0],
+        role: studio ? 'gm' : 'player',
+        canAccessStudio: studio,
+    };
+}
+
+function persistSession(account: MockAccountRecord): AuthSession {
+    const session: AuthSession = { userId: account.userId, email: account.email };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(buildProfile(account.userId, account.email)));
+    return session;
+}
+
 function readChars(): CharacterRow[] {
     try {
         const raw = localStorage.getItem(CHARS_KEY);
         let parsed = raw ? (JSON.parse(raw) as CharacterRow[]) : [];
 
-        // Migração: Se houver uma sessão mock ativa, migra personagens órfãos (com ID antigo mock_*)
-        // para o novo ID de usuário determinístico (mock_user_*) para que o desenvolvedor não perca seus testes.
         const sessionRaw = localStorage.getItem(SESSION_KEY);
         if (sessionRaw) {
             try {
                 const session = JSON.parse(sessionRaw) as AuthSession;
-                if (session && session.userId) {
+                if (session?.userId) {
                     let migrated = false;
-                    parsed = parsed.map(c => {
-                        if (c.accountId && c.accountId.startsWith('mock_') && !c.accountId.startsWith('mock_user_')) {
+                    parsed = parsed.map((c) => {
+                        if (
+                            c.accountId &&
+                            c.accountId.startsWith('mock_') &&
+                            !c.accountId.startsWith('mock_user_')
+                        ) {
                             c.accountId = session.userId;
                             migrated = true;
                         }
@@ -42,33 +151,50 @@ function readChars(): CharacterRow[] {
                         localStorage.setItem(CHARS_KEY, JSON.stringify(parsed));
                     }
                 }
-            } catch (e) {}
+            } catch {
+                /* ignore */
+            }
         }
 
-        return parsed.map(c => {
-            const config = c.outfitConfig as any || {};
-            const vocation = c.vocation ?? config.vocation ?? 'knight';
-            const gender = c.gender ?? config.gender ?? 'male';
-            const spriteSheetUrl = c.outfitConfig?.spriteSheetUrl || `tiles/characters/vocations/${gender}/${vocation}.png`;
+        return parsed.map((c) => {
+            const config = (c.outfitConfig as any) || {};
+            const vocation = c.vocation ?? (config.vocation as string) ?? 'knight';
+            const gender = c.gender ?? (config.gender as Gender) ?? 'male';
+            const spriteSheetUrl =
+                c.outfitConfig?.spriteSheetUrl ||
+                `tiles/characters/vocations/${gender}/${vocation}.png`;
             return {
                 ...c,
                 vocation,
-                level: c.level ?? config.level ?? 1,
-                experience: c.experience ?? config.experience ?? 0,
+                level: c.level ?? (config.level as number) ?? 1,
+                experience: c.experience ?? (config.experience as number) ?? 0,
                 gender,
-                appearance: c.appearance ?? config.appearance ?? {
-                    gender: gender as 'male' | 'female',
-                    outfitId: config.appearance?.outfitId || `default_${vocation}_${gender}`,
-                    spriteSheetUrl,
-                },
-                gameId: c.gameId ?? config.gameId ?? DEFAULT_GAME_CONFIG.id,
-                mapId: c.mapId || config.mapId || c.spawnMapId || DEFAULT_GAME_CONFIG.start.mapId,
-                position: c.position ?? config.position ?? { ...DEFAULT_GAME_CONFIG.start.position },
-                direction: c.direction ?? config.direction ?? DEFAULT_GAME_CONFIG.start.direction,
+                appearance: c.appearance ??
+                    (config.appearance as CharacterRow['appearance']) ?? {
+                        gender: gender as 'male' | 'female',
+                        outfitId:
+                            (config.appearance as { outfitId?: string } | undefined)?.outfitId ||
+                            `default_${vocation}_${gender}`,
+                        spriteSheetUrl,
+                    },
+                gameId: c.gameId ?? (config.gameId as string) ?? DEFAULT_GAME_CONFIG.id,
+                mapId:
+                    c.mapId ||
+                    (config.mapId as string) ||
+                    c.spawnMapId ||
+                    DEFAULT_GAME_CONFIG.start.mapId,
+                position:
+                    c.position ??
+                    (config.position as CharacterRow['position']) ??
+                    { ...DEFAULT_GAME_CONFIG.start.position },
+                direction:
+                    c.direction ??
+                    (config.direction as CharacterRow['direction']) ??
+                    DEFAULT_GAME_CONFIG.start.direction,
             };
         });
     } catch (err) {
-        console.error("Erro ao ler personagens do mockAuth:", err);
+        console.error('Erro ao ler personagens do mockAuth:', err);
         return [];
     }
 }
@@ -95,40 +221,17 @@ export function mockGetProfile(): UserProfile | null {
     } catch {
         /* ignore */
     }
-    const studio =
-        import.meta.env.VITE_MOCK_STUDIO === 'true' ||
-        session.email.endsWith('@gm.dev');
-    return {
-        id: session.userId,
-        displayName: session.email.split('@')[0],
-        role: studio ? 'gm' : 'player',
-        canAccessStudio: studio,
-    };
+    return buildProfile(session.userId, session.email);
 }
 
-export function mockSignUp(email: string, _password: string): AuthSession {
-    const normalizedEmail = email.trim().toLowerCase();
-    const cleanEmail = normalizedEmail.replace(/[^a-zA-Z0-9]/g, '_');
-    const userId = `mock_user_${cleanEmail}`;
-    const session: AuthSession = { userId, email: normalizedEmail };
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-    const studio = normalizedEmail.endsWith('@gm.dev') || import.meta.env.VITE_MOCK_STUDIO === 'true';
-    const profile: UserProfile = {
-        id: session.userId,
-        displayName: normalizedEmail.split('@')[0],
-        role: studio ? 'gm' : 'player',
-        canAccessStudio: studio,
-    };
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-    return session;
+export async function mockSignUp(email: string, password: string): Promise<AuthSession> {
+    const account = await registerMockAccount(email, password);
+    return persistSession(account);
 }
 
-export function mockSignIn(email: string, _password: string): AuthSession {
-    const existing = mockGetSession();
-    if (existing && existing.email === email.trim().toLowerCase()) {
-        return existing;
-    }
-    return mockSignUp(email, _password);
+export async function mockSignIn(email: string, password: string): Promise<AuthSession> {
+    const account = await resolveMockAccount(email, password);
+    return persistSession(account);
 }
 
 export function mockSignOut(): void {
@@ -158,8 +261,7 @@ export async function mockCreateCharacter(
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
 
-    // Tenta carregar a configuração real do outfit a partir do arquivo JSON
-    let outfitConfig: any = null;
+    let outfitConfig: Record<string, unknown> | null = null;
     const jsonUrl = '/' + spriteSheetUrl.replace(/\.png$/i, '.json');
     try {
         const res = await fetch(jsonUrl);
@@ -215,17 +317,11 @@ export async function mockCreateCharacter(
 }
 
 export function mockSoftDeleteCharacter(id: string, accountId: string): void {
-    console.log('[mockSoftDeleteCharacter] Request:', { id, accountId });
     const chars = readChars();
-    console.log('[mockSoftDeleteCharacter] All characters:', chars);
     const c = chars.find((x) => x.id === id && x.accountId === accountId);
-    console.log('[mockSoftDeleteCharacter] Found match:', c);
     if (c) {
         c.deletedAt = new Date().toISOString();
         writeChars(chars);
-        console.log('[mockSoftDeleteCharacter] Successfully marked deleted and saved.');
-    } else {
-        console.warn('[mockSoftDeleteCharacter] No character matched search criteria.');
     }
 }
 
@@ -253,15 +349,16 @@ export function mockUpdateCharacterLocation(
 ): void {
     const chars = readChars();
     const c = chars.find((x) => x.id === id);
-    if (c) {
-        c.mapId = location.mapId;
-        c.position = { ...location.position };
-        c.direction = location.direction;
-        if (c.outfitConfig) {
-            (c.outfitConfig as any).mapId = location.mapId;
-            (c.outfitConfig as any).position = { ...location.position };
-            (c.outfitConfig as any).direction = location.direction;
-        }
-        writeChars(chars);
+    if (!c) return;
+
+    c.mapId = location.mapId;
+    c.position = { ...location.position };
+    c.direction = location.direction;
+    if (c.outfitConfig) {
+        const config = c.outfitConfig as any;
+        config.mapId = location.mapId;
+        config.position = { ...location.position };
+        config.direction = location.direction;
     }
+    writeChars(chars);
 }

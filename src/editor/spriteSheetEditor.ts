@@ -3,6 +3,7 @@ import type { SpriteAnimationController } from '../character/spriteAnimation';
 import type { CharacterState, Direction } from '../character/spriteAnimation';
 import { openCharacterCalibrator } from './characterCalibratorModal';
 import { toast, popup } from '../utils/popup';
+import { upscalePixelArtDataUrl } from '../utils/imageProcessor';
 import { renderFolderTree } from './folderTree';
 import { buildConfigPathFromSave, upsertCreaturePreset } from './creaturePresetRegistry';
 import type { CreatureVisualSize } from './creaturePresets';
@@ -151,7 +152,9 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
     const importInput = document.getElementById('importCharInput') as HTMLInputElement;
     const loadSpriteBtn = document.getElementById('loadSpriteBtn');
     const importSpriteInput = document.getElementById('importSpriteInput') as HTMLInputElement;
-    const upscaleSpriteBtn = document.getElementById('upscaleSpriteBtn');
+    const upscaleSpriteRow = document.getElementById('upscaleSpriteRow');
+    const upscaleSprite2xBtn = document.getElementById('upscaleSprite2xBtn');
+    const upscaleSprite3xBtn = document.getElementById('upscaleSprite3xBtn');
     const templateSelectEl = document.getElementById('charTemplateSelect') as HTMLSelectElement;
     const chromaKeyToggleEl = document.getElementById('charChromaKeyToggle') as HTMLInputElement;
     const chromaKeyToleranceRowEl = document.getElementById('charChromaKeyToleranceRow') as HTMLDivElement;
@@ -277,8 +280,19 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         const config = ctrl.config;
         frameWidthEl.value = config.frameWidth.toString();
         frameHeightEl.value = config.frameHeight.toString();
-        if (upscaleSpriteBtn) {
-            upscaleSpriteBtn.style.display = ctrl.isLoaded && config.frameWidth <= 48 ? 'block' : 'none';
+        if (upscaleSpriteRow && upscaleSprite2xBtn && upscaleSprite3xBtn) {
+            const fw = config.frameWidth;
+            const show2x = ctrl.isLoaded && fw < 64;
+            const show3x = ctrl.isLoaded && fw <= 48;
+            upscaleSpriteRow.style.display = show2x || show3x ? 'flex' : 'none';
+            upscaleSprite2xBtn.style.display = show2x ? 'block' : 'none';
+            upscaleSprite3xBtn.style.display = show3x ? 'block' : 'none';
+            if (show2x) {
+                upscaleSprite2xBtn.textContent = `⚡ 2x (${fw}→${fw * 2}px)`;
+            }
+            if (show3x) {
+                upscaleSprite3xBtn.textContent = `⚡ 3x (${fw}→${fw * 3}px)`;
+            }
         }
         offsetXEl.value = String(config.offsetX ?? 0);
         offsetYEl.value = String(config.offsetY ?? 0);
@@ -756,33 +770,45 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         };
         reader.readAsDataURL(file);
     });
-    upscaleSpriteBtn?.addEventListener('click', async () => {
+    async function applySpriteUpscale(scale: 2 | 3): Promise<void> {
         const ctrl = getController();
-        if (!ctrl.isLoaded || !ctrl.image) return toast.error('Nenhuma imagem carregada.');
+        if (!ctrl.isLoaded || !ctrl.image) {
+            toast.error('Nenhuma imagem carregada.');
+            return;
+        }
         const config = ctrl.config;
-        const scale = 3;
-        const upscaled = await new Promise<string>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                const c = document.createElement('canvas');
-                c.width = img.width * scale; c.height = img.height * scale;
-                const ctx = c.getContext('2d')!; ctx.imageSmoothingEnabled = false;
-                ctx.drawImage(img, 0, 0, c.width, c.height);
-                resolve(c.toDataURL('image/png'));
-            };
-            img.onerror = () => reject(new Error('Erro na imagem'));
-            img.src = ctrl.image!.src;
-        });
-        config.spriteSheetUrl = upscaled;
-        config.frameWidth *= scale; config.frameHeight *= scale;
-        ['offsetX', 'offsetY', 'gapX', 'gapY', 'anchorX', 'anchorY'].forEach((k) => {
-            const key = k as keyof typeof config;
-            if (typeof config[key] === 'number') (config[key] as number) *= scale;
-        });
-        ctrl.loadImage();
-        const wait = async () => { if (ctrl.isLoaded) { syncControllerToUI(); saveConfigToLocalStorage(); await saveActiveCharacterToServer(true); } else setTimeout(wait, 50); };
-        wait();
-    });
+        const beforeW = config.frameWidth;
+        try {
+            const upscaled = await upscalePixelArtDataUrl(ctrl.image.src, scale);
+            config.spriteSheetUrl = upscaled;
+            config.frameWidth *= scale;
+            config.frameHeight *= scale;
+            for (const key of ['offsetX', 'offsetY', 'gapX', 'gapY', 'anchorX', 'anchorY'] as const) {
+                if (typeof config[key] === 'number') {
+                    config[key] = (config[key] as number) * scale;
+                }
+            }
+            ctrl.loadImage();
+            await new Promise<void>((resolve) => {
+                const wait = () => {
+                    if (ctrl.isLoaded) {
+                        syncControllerToUI();
+                        saveConfigToLocalStorage();
+                        void saveActiveCharacterToServer(true).then(() => resolve());
+                    } else {
+                        setTimeout(wait, 50);
+                    }
+                };
+                wait();
+            });
+            toast.success(`Upscale ${scale}x aplicado (${beforeW}px → ${config.frameWidth}px).`);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Falha no upscale.');
+        }
+    }
+
+    upscaleSprite2xBtn?.addEventListener('click', () => void applySpriteUpscale(2));
+    upscaleSprite3xBtn?.addEventListener('click', () => void applySpriteUpscale(3));
     document.getElementById('openCalibratorBtn')?.addEventListener('click', () => {
         const ctrl = getController();
         if (!ctrl.isLoaded || !ctrl.image) return toast.info('Carregue um PNG primeiro.');

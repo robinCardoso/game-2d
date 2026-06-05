@@ -151,6 +151,14 @@
       "variantGroup": "ground",
       "walkable": true,
       "variantIndex": 3
+    },
+    "42": {
+      "id": 42,
+      "name": "01-arvore",
+      "ref": "01_arvore",
+      "category": "nature",
+      "variantGroup": "tree",
+      "walkable": false
     }
   },
   "spawn": {
@@ -706,6 +714,12 @@
         { "x": 37, "y": 47, "id": 7, "ref": "terra_edges_mask_1" },
         { "x": 38, "y": 47, "id": 7, "ref": "terra_edges_mask_1" },
         { "x": 39, "y": 47, "id": 9, "ref": "terra_edges_mask_128" }
+      ]
+    },
+    "items": {
+      "0": [
+        { "x": 43, "y": 45, "id": 42, "ref": "01_arvore" },
+        { "x": 39, "y": 49, "id": 42, "ref": "01_arvore" }
       ]
     }
   },

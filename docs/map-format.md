@@ -185,6 +185,26 @@ Estrutura resumida:
 
 Strip detectado quando largura PNG = `N × tileSize` ou `variantStripFrames` em `tile_properties.json`.
 
+### Sprites maiores que o tile (âncora)
+
+A célula lógica continua **32×32** (`ENGINE_CONFIG.TILE_SIZE`). Sprites com `frameWidth` / `frameHeight` maiores (ex. árvore 64×64) podem transbordar visualmente; o ponto de referência é o **centro inferior** da célula pintada (mesmo modelo dos personagens).
+
+| Campo em `tile_properties.json` | Papel |
+|---------------------------------|-------|
+| `frameWidth`, `frameHeight` | Tamanho real do frame no PNG |
+| `anchorX`, `anchorY` | Ajuste fino em pixels sobre a âncora padrão (centro horizontal + base alinhada ao tile) |
+
+O motor aplica `anchorX` / `anchorY` em `drawRegistryTile` via `getSpriteTilePlacement` (Studio e Play). Valores default `0` preservam o comportamento anterior.
+
+Exemplo (`01_arvore`, pé no canto inferior direito do frame 64×64):
+
+```json
+"anchorX": -32,
+"anchorY": 0
+```
+
+Calibrador **Criar Sprites → Calibrar Grade** persiste `anchorX` / `anchorY` ao salvar no servidor.
+
 ---
 
 ## Tiles, IDs e variantes aleatórias

@@ -42,7 +42,7 @@ export function removeChromaKey(
                 
                 // Extrai os dados dos pixels
                 const imgData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-                const data = imgData.data;
+                const { data } = imgData;
                 
                 // Usa a cor explícita recebida (fallback para MAGIC_PINK),
                 // mantendo comportamento previsível mesmo com spritesheets heterogêneas.
@@ -96,5 +96,45 @@ export function removeChromaKey(
         } else {
             img.src = imageSource.src;
         }
+    });
+}
+
+/** Limite de pixels (~16 MP) para upscale pontual no editor sem travar o navegador. */
+const UPSCALE_MAX_OUTPUT_PIXELS = 16_000_000;
+
+/**
+ * Escala pixel art por fator inteiro (2x/3x) com vizinho mais próximo (sem blur).
+ * Uma passagem em canvas — adequado para spritesheets de personagem no Studio.
+ */
+export function upscalePixelArtDataUrl(imageSrc: string, scale: 2 | 3): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+            const w = img.naturalWidth || img.width;
+            const h = img.naturalHeight || img.height;
+            const outW = w * scale;
+            const outH = h * scale;
+            if (outW * outH > UPSCALE_MAX_OUTPUT_PIXELS) {
+                reject(
+                    new Error(
+                        `Spritesheet grande demais para ${scale}x (${outW}×${outH}). Reduza a imagem ou use fator menor.`
+                    )
+                );
+                return;
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = outW;
+            canvas.height = outH;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+                reject(new Error('Canvas 2D indisponível.'));
+                return;
+            }
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(img, 0, 0, outW, outH);
+            resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => reject(new Error('Erro ao carregar spritesheet.'));
+        img.src = imageSrc;
     });
 }

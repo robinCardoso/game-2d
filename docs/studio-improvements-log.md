@@ -2,7 +2,7 @@
 
 Documento de referência para humanos e agentes IA. **Atualizar este arquivo** quando mudar calibrador, registry, carregamento de mapas ou APIs de sprite.
 
-Última revisão: **2026-06-04**
+Última revisão: **2026-06-05**
 
 ---
 
@@ -17,7 +17,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | Variantes soltas na paleta | Strip sem `variantGroup` | `inferVariantGroupForStrip()` + export inferido |
 | Exclusão de sprites | Só existia em `dist/` | UI 🗑️ + `sprite-usage` + `delete-map-sprite` no source |
 | Metadados órfãos | `01_grama_randon` vs `01_grama.png` | Chave JSON = filename do PNG |
-| **Save sem camadas** | JSON só tinha `tiles` + `spawn` | `formatMapDocumentJson` inclui `layers.grass` / `layers.border` |
+| **Save sem camadas** | JSON só tinha `tiles` + `spawn` | `formatMapDocumentJson` inclui `layers.grass` / `layers.border` / `layers.items` |
 | **Auto-borda visual** | Filetes errados, cantos L, cruz (+) | `borderMaskBits.ts` + `collectBorderDrawMasks()` multi-sprite |
 | **CPU alto (Studio)** | Bordas recalculadas todo frame; minimap 256×256×60 | Cache de draw, culling viewport, minimap lazy, 30 FPS idle |
 | **UX de Exportação** | Perda de dados (stripping), botões redundantes, campos vazios | `resolveStripBaseName` ajustado, inputs obrigatórios, botões contextuais no calibrador |
@@ -27,6 +27,7 @@ Documento de referência para humanos e agentes IA. **Atualizar este arquivo** q
 | **Fatiamento Customizado** | O motor de jogo ignorava offsets (`offsetX`, `offsetY`, `gap`) ao fatiar variant strips horizontais/verticais | `tileRegistry.ts` aprimorado para respeitar os offsets e tamanhos customizados de `tile_properties.json` |
 | **Auto-borda Dinâmico** | O sistema só ativava auto-borda para o grupo de variação estático `grass` | `autoBorderUi.ts` busca dinamicamente conjuntos cujo `fillTerrain` corresponda ao `variantGroup` selecionado |
 | **Terrenos/Grupos Dropdowns** | Campos de texto para `fillTerrain` e `variantGroup` propícios a erros de digitação e esquecimentos | Substituídos por `<select>` dinâmicos com opção de escolher existentes ou criar novos grupos na hora |
+| **Play auto-borda errada** | `playApp.ts` usava `grass_edges` / `grass` fixos; mapas com `terra_edges` e grupos `*-grass-random` renderizavam filetes quebrados na base | `playBorderConfig.ts` carrega manifest; `isMapBorderTile` ignora bordas na camada base; `isGrassTile` reconhece grupos `*-grass-random` |
 
 ---
 
@@ -378,7 +379,7 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
   3. Colocar uma árvore ou pedra no mapa apagava/substituía o chão de grama por baixo dela, pois tudo ficava na camada base.
 - **Solução:**
   1. **Calibrador Visual & Batch Export:** Permite ao usuário escolher se deseja manter o tamanho original ou redimensionar para 32x32px ao salvar sprites maiores. As propriedades `frameWidth` e `frameHeight` são salvas no catálogo de metadados.
-  2. **Renderização Bottom-Center (`tileDraw.ts`):** O motor de desenho agora calcula o tamanho real do frame e desenha o sprite centralizado horizontalmente e alinhado na base inferior da coordenada correspondente (âncora bottom-center).
+  2. **Renderização com âncora (`tileDraw.ts`):** O motor calcula o tamanho real do frame e posiciona via `getSpriteTilePlacement` (centro horizontal + base no tile). Sprites 64×64 usam `anchorX` / `anchorY` em `tile_properties.json` para alinhar o pé ao centro inferior da célula (ver §21).
   3. **Camada de Sobreposição de Itens (`items`):** Adicionada a camada `itemsOverlayMap` (serializada no JSON do mapa como `layers.items`). Tiles da paleta nas abas `NATUREZA`, `PAREDES` e `ITENS` são pintados automaticamente nesta camada, preservando o chão original intacto por baixo. A borracha (Eraser) remove primeiro a decoração na camada superior e, num segundo clique, o chão base.
   4. **Renderização em Duas Passadas:** O loop de desenho do Studio (`main.ts`) e do jogo (`playApp.ts`) foi refatorado:
      - **Passo 1:** Desenha todo o chão base, gramas e bordas de todas as células visíveis.
@@ -432,4 +433,46 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 - **Arquivo:** [spriteSheetEditor.ts](file:///c:/Users/Robson/source/game-2d/src/editor/spriteSheetEditor.ts)
 - **Problema:** O editor de fichas de personagens permitia preencher os campos `Ajuste Âncora X` e `Y` mas não dava nenhum feedback visual das alterações. O boneco ficava oculto no mapa do editor (por causa de `hidePlayerSprite: true` no boot) e o canvas de preview lateral apenas esticava o frame cobrindo a área toda, sem aplicar as âncoras.
 - **Solução:** O loop `drawPreviewLoop` do preview lateral de animação do editor foi aprimorado. Agora ele desenha uma célula guia azul tracejada de 32x32px (escalada) representando o bloco de colisão, uma mira (cruz) vermelha representando o ponto de âncora padrão dos pés do personagem, e desenha o sprite aplicando os valores de `anchorX` e `anchorY` em tempo real. Isso permite ao usuário ver o sprite deslizar e calibrar visualmente até os pés tocarem a mira de forma exata.
+
+---
+
+## 20. Play — auto-borda alinhada ao Studio (2026-06-05)
+
+### 20.1 Config dinâmica de conjunto auto-borda
+- **Arquivos:** `src/game/playBorderConfig.ts`, `src/game/playApp.ts`
+- **Problema:** O Play usava `borderSetId: 'grass_edges'` e `fillTerrain: 'grass'` hardcoded, enquanto o manifest (`public/auto_border_sets.json`) e os tiles reais usam `terra_edges` / `02-grass-random`.
+- **Solução:** `loadPlayBorderConfig()` busca `/api/list-auto-border-sets` (mesma fonte do Studio) antes de carregar o mapa; fallback `terra_edges` + `02-grass-random`.
+
+### 20.2 Bordas não desenham na camada base
+- **Arquivos:** `src/engine/tileDraw.ts` (`isMapBorderTile`), `src/game/playApp.ts`, `src/main.ts`
+- **Problema:** Mapas legados com ids de filete (ex. 8, 9) na grade `floors` exibiam fragmentos triangulares como se fossem piso.
+- **Solução:** Camada base ignora tiles `assetType === 'border'`; filetes continuam via `collectBorderDrawTileIdsCached` / `layers.border`.
+
+### 20.3 Detecção de grama para vizinhança de borda
+- **Arquivo:** `src/engine/autoBorderEngine.ts`
+- **Solução:** `isGrassTile` reconhece grupos `01-grass-random`, `02-grass-random` e variantes com `grass`/`grama` no nome.
+
+### Checklist pós-fix Play
+- [ ] Salvar `mainland.json` no Studio (formato esparso + `layers` + `tileRefs`) — o arquivo em disco ainda pode estar legado só com ids 8/9 na base
+- [ ] Play: pedra na base, grama no overlay, filetes nas células vizinhas
+- [ ] Rookgaard continua igual (já usa `layers` corretamente)
+
+---
+
+## 21. Âncora de sprites de mapa (2026-06-04)
+
+### 21.1 Posicionamento unificado com personagens
+- **Arquivos:** `src/functions/tileConfig.ts`, `src/engine/tileDraw.ts`, `src/editor/mapSpriteCalibration.ts`, `src/editor/mapSpriteEditor.ts`, `tiles/tile_properties.json`
+- **Problema:** Sprites de mapa maiores que 32×32 (ex. `01_arvore` 64×64 com pé no canto inferior direito) eram centralizados horizontalmente sem ajuste — o pé ficava ~32px à direita do centro da célula.
+- **Solução:**
+  1. `TileProperties` e o registry propagam `anchorX` / `anchorY` de `tile_properties.json`.
+  2. `drawRegistryTile` usa `getSpriteTilePlacement` (mesma lógica dos personagens) no Studio e no Play.
+  3. Calibrador **Criar Sprites** lê e persiste âncora via `calibrationToPropertyPayload` + `onConfirm` do calibrador.
+  4. `01_arvore`: `anchorX: -32`, `anchorY: 0`, `paletteCategory: "nature"`.
+
+### Checklist pós-âncora mapa
+- [ ] Studio: pintar `01_arvore` — pé alinhado ao centro inferior da célula
+- [ ] Salvar mapa → F5 → posição mantida
+- [ ] Play: mesma posição visual
+- [ ] Tile 32×32 sem âncora — comportamento idêntico ao anterior
 

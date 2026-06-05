@@ -14,7 +14,7 @@ import {
     type CollisionQueryContext,
     type WorldMap,
 } from '../engine';
-import { drawRegistryTile } from '../engine/tileDraw';
+import { drawRegistryTile, isMapBorderTile } from '../engine/tileDraw';
 import { SpriteAnimationController } from '../character/spriteAnimation';
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
 import {
@@ -48,10 +48,9 @@ import { createEnterTicket } from '../shared/enterTicket';
 import type { CharacterRow } from '../shared/types';
 import { updateCharacterLocation } from '../shared/characterStore';
 import { updateCharacterStatsUi } from './ui/characterStatsUi';
+import { getPlayBorderConfig, loadPlayBorderConfig } from './playBorderConfig';
 
 const TILE_SIZE_SCREEN = ENGINE_CONFIG.TILE_SIZE;
-const PLAY_BORDER_SET_ID = 'grass_edges';
-const PLAY_FILL_TERRAIN = 'grass';
 let TILE_TYPES = buildTileRegistry();
 let activeMapSize: number = ENGINE_CONFIG.MAP_SIZE;
 let worldMap: WorldMap = ensureAllFloors(createEmptyWorldMap());
@@ -274,18 +273,21 @@ function setupLocationAutosave(): void {
     }, 10000);
 }
 
-export async function stopLocationAutosave(): Promise<void> {
-    if (!locationAutosaveStarted) return;
-    locationAutosaveStarted = false;
-
-    window.removeEventListener('beforeunload', handleBeforeUnload);
-
-    if (locationAutosaveIntervalId !== null) {
-        window.clearInterval(locationAutosaveIntervalId);
-        locationAutosaveIntervalId = null;
-    }
-
+/** Grava posição imediatamente (ex.: trocar personagem, sair do jogo). */
+export async function flushCharacterLocationSave(): Promise<void> {
     await saveCurrentCharacterLocation();
+}
+
+export async function stopLocationAutosave(): Promise<void> {
+    if (locationAutosaveStarted) {
+        locationAutosaveStarted = false;
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+        if (locationAutosaveIntervalId !== null) {
+            window.clearInterval(locationAutosaveIntervalId);
+            locationAutosaveIntervalId = null;
+        }
+    }
+    await flushCharacterLocationSave();
 }
 
 
@@ -433,13 +435,14 @@ function update(): void {
 }
 
 function getPlayBorderDrawContext() {
+    const borderConfig = getPlayBorderConfig();
     return {
         worldMap,
         grassOverlay: grassOverlayMap,
         borderOverlay: borderOverlayMap,
         registry: TILE_TYPES,
-        fillTerrain: PLAY_FILL_TERRAIN,
-        borderSetId: PLAY_BORDER_SET_ID,
+        fillTerrain: borderConfig.fillTerrain,
+        borderSetId: borderConfig.borderSetId,
     };
 }
 
@@ -466,9 +469,15 @@ function draw(): void {
         const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE_SCREEN));
         const endY = Math.min(activeMapSize - 1, Math.floor((camera.y + canvas.height) / TILE_SIZE_SCREEN));
 
-        const drawLayerTile = (tid: number | undefined, tx: number, ty: number) => {
+        const drawLayerTile = (
+            tid: number | undefined,
+            tx: number,
+            ty: number,
+            options?: { skipBorderTiles?: boolean }
+        ) => {
             if (tid === undefined || tid === -1) return;
             const tile = TILE_TYPES[tid];
+            if (options?.skipBorderTiles && isMapBorderTile(tile)) return;
             if (tile?.image?.complete) {
                 drawRegistryTile(
                     ctx,
@@ -483,7 +492,7 @@ function draw(): void {
         // Pass 1: Draw ground layer
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                drawLayerTile(worldMap[z]?.[y]?.[x], x, y);
+                drawLayerTile(worldMap[z]?.[y]?.[x], x, y, { skipBorderTiles: true });
                 drawLayerTile(getLayerCell(grassOverlayMap, z, x, y), x, y);
                 const grassTid = getLayerCell(grassOverlayMap, z, x, y);
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {
@@ -664,9 +673,11 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
 
     showLoading('Carregando mundo…');
     await loadCreaturePresets();
+    await loadPlayBorderConfig();
     TILE_TYPES = await buildTileRegistryAsync();
     const loaded = await loadMapFile(mapEntry, TILE_TYPES);
     applyLoadedMap({ ...loaded, mapId: loaded.mapId ?? entry.id });
+    invalidateBorderDrawCache();
 
     window.addEventListener('keydown', (e) => {
         keys[e.key.toLowerCase()] = true;

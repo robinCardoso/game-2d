@@ -10,6 +10,8 @@ export interface MapSpriteCalibration {
     gridCols: number;
     gridRows: number;
     sheetLayout: 'horizontal' | 'vertical';
+    anchorX?: number;
+    anchorY?: number;
 }
 
 export interface MapSpriteCalibrationHints {
@@ -23,6 +25,8 @@ export interface MapSpriteCalibrationHints {
     gridCols?: number;
     gridRows?: number;
     sheetLayout?: 'horizontal' | 'vertical';
+    anchorX?: number;
+    anchorY?: number;
 }
 
 function hasPersistedGrid(hints?: MapSpriteCalibrationHints): boolean {
@@ -165,6 +169,8 @@ export function calibrationHintsFromProperties(
         gridCols: num('gridCols'),
         gridRows: num('gridRows'),
         sheetLayout: layout === 'vertical' ? 'vertical' : layout === 'horizontal' ? 'horizontal' : undefined,
+        anchorX: num('anchorX'),
+        anchorY: num('anchorY'),
     };
 }
 
@@ -181,6 +187,8 @@ export function calibrationToPropertyPayload(
         gridCols: calibration.gridCols,
         gridRows: calibration.gridRows,
         sheetLayout: calibration.sheetLayout,
+        anchorX: calibration.anchorX ?? 0,
+        anchorY: calibration.anchorY ?? 0,
     };
     if (calibration.gridCols * calibration.gridRows > 1) {
         payload.variantStripFrames = calibration.gridCols * calibration.gridRows;

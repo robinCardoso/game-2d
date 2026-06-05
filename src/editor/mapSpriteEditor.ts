@@ -57,6 +57,8 @@ interface MapSpriteListEntry {
         gridCols?: number;
         gridRows?: number;
         sheetLayout?: string;
+        anchorX?: number;
+        anchorY?: number;
         assetType?: string;
         tileRole?: string;
         borderSetId?: string;
@@ -238,7 +240,11 @@ export function initMapSpriteEditor() {
         const w = originalImage.naturalWidth || originalImage.width;
         const h = originalImage.naturalHeight || originalImage.height;
         const hints = calibrationHintsFromProperties(properties as Record<string, unknown> | undefined);
-        currentCalibration = inferMapSpriteCalibration(w, h, hints);
+        currentCalibration = {
+            ...inferMapSpriteCalibration(w, h, hints),
+            anchorX: hints?.anchorX ?? 0,
+            anchorY: hints?.anchorY ?? 0,
+        };
         applyCalibrationToForm(currentCalibration);
     }
 
@@ -271,6 +277,8 @@ export function initMapSpriteEditor() {
             gridCols,
             gridRows,
             sheetLayout: currentCalibration?.sheetLayout ?? 'horizontal',
+            anchorX: currentCalibration?.anchorX ?? 0,
+            anchorY: currentCalibration?.anchorY ?? 0,
         };
     }
 
@@ -960,8 +968,8 @@ export function initMapSpriteEditor() {
             offsetY: calibration.offsetY,
             gapX: calibration.gapX,
             gapY: calibration.gapY,
-            anchorX: 0,
-            anchorY: 0,
+            anchorX: calibration.anchorX ?? loadedSpriteProperties?.anchorX ?? 0,
+            anchorY: calibration.anchorY ?? loadedSpriteProperties?.anchorY ?? 0,
             sheetLayout: calibration.sheetLayout,
         };
 
@@ -1049,6 +1057,8 @@ export function initMapSpriteEditor() {
                         gridCols: 1,
                         gridRows: 1,
                         sheetLayout: 'horizontal',
+                        anchorX: result.anchorX ?? 0,
+                        anchorY: result.anchorY ?? 0,
                     };
                     
                     toast.success(`Recortado para ${finalWidth}×${finalHeight} px! (Col ${selCol + 1}, Linha ${selRow + 1})`);
@@ -1075,6 +1085,8 @@ export function initMapSpriteEditor() {
                         gridCols: cols,
                         gridRows: rows,
                         sheetLayout: (result.sheetLayout as 'horizontal' | 'vertical') ?? 'horizontal',
+                        anchorX: result.anchorX ?? 0,
+                        anchorY: result.anchorY ?? 0,
                     };
                     toast.success('Grade calibrada com sucesso!');
                 }

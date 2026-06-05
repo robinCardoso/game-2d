@@ -1,8 +1,8 @@
 {
   "name": "Knight",
   "spriteSheetUrl": "tiles/characters/vocations/male/knight.png",
-  "frameWidth": 32,
-  "frameHeight": 32,
+  "frameWidth": 64,
+  "frameHeight": 64,
   "defaultDirection": "down",
   "animations": {
     "idle_up": {
@@ -90,7 +90,7 @@
   "offsetY": 0,
   "gapX": 0,
   "gapY": 0,
-  "anchorX": 0,
+  "anchorX": -20,
   "anchorY": 0,
   "chromaKey": true,
   "chromaKeyTolerance": 50,

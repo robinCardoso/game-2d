@@ -71,6 +71,9 @@ export function buildMapDocumentExportView(doc: MapDocument): Record<string, unk
         if (doc.layers.border && Object.keys(doc.layers.border).length > 0) {
             layersOut.border = doc.layers.border;
         }
+        if (doc.layers.items && Object.keys(doc.layers.items).length > 0) {
+            layersOut.items = doc.layers.items;
+        }
         if (Object.keys(layersOut).length > 0) {
             out.layers = layersOut;
         }
@@ -154,6 +157,9 @@ function formatLayers(layers: NonNullable<MapDocument['layers']>, indent: string
     }
     if (layers.border && Object.keys(layers.border).length > 0) {
         sections.push(formatTilesByFloor(layers.border, `${indent}  `, 'border').join('\n'));
+    }
+    if (layers.items && Object.keys(layers.items).length > 0) {
+        sections.push(formatTilesByFloor(layers.items, `${indent}  `, 'items').join('\n'));
     }
 
     lines.push(sections.join(',\n'));

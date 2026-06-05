@@ -1,6 +1,13 @@
+import { getSpriteTilePlacement } from '../character/spriteDraw';
 import type { RegistryTile } from './types';
 
 const borderChromaCache = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+
+/** Tiles de filete auto-borda — não devem ser desenhados na camada base do mapa. */
+export function isMapBorderTile(tile: RegistryTile | undefined): boolean {
+    if (!tile) return false;
+    return tile.assetType === 'border' || tile.paletteCategory === 'border';
+}
 
 function applyBlackChromaKey(ctx: CanvasRenderingContext2D, size: number): void {
     const imageData = ctx.getImageData(0, 0, size, size);
@@ -58,7 +65,7 @@ export function getTileDrawSize(tile: RegistryTile, defaultSize: number): { w: n
     return { w: defaultSize, h: defaultSize };
 }
 
-/** Desenha tile do registro (suporta fatia de variant strip). */
+/** Desenha tile do registro (suporta fatia de variant strip + âncora). */
 export function drawRegistryTile(
     ctx: CanvasRenderingContext2D,
     tile: RegistryTile,
@@ -67,13 +74,27 @@ export function drawRegistryTile(
     size: number
 ): void {
     const { w: tw, h: th } = getTileDrawSize(tile, size);
-    const drawX = Math.round(dx + (size - tw) / 2);
-    const drawY = Math.round(dy + (size - th));
+    const placement = getSpriteTilePlacement(dx, dy, 0, 0, size, {
+        sx: 0,
+        sy: 0,
+        sw: tw,
+        sh: th,
+        ax: tile.anchorX ?? 0,
+        ay: tile.anchorY ?? 0,
+    });
 
     if (tile.assetType === 'border' || tile.paletteCategory === 'border') {
         const borderCanvas = getBorderTileCanvas(tile, size);
         if (borderCanvas) {
-            ctx.drawImage(borderCanvas, drawX, drawY);
+            const borderPlacement = getSpriteTilePlacement(dx, dy, 0, 0, size, {
+                sx: 0,
+                sy: 0,
+                sw: size,
+                sh: size,
+                ax: tile.anchorX ?? 0,
+                ay: tile.anchorY ?? 0,
+            });
+            ctx.drawImage(borderCanvas, borderPlacement.drawX, borderPlacement.drawY);
             return;
         }
     }
@@ -83,9 +104,25 @@ export function drawRegistryTile(
 
     const sr = tile.sourceRect;
     if (sr) {
-        ctx.drawImage(img, sr.x, sr.y, sr.w, sr.h, drawX, drawY, tw, th);
+        ctx.drawImage(
+            img,
+            sr.x,
+            sr.y,
+            sr.w,
+            sr.h,
+            placement.drawX,
+            placement.drawY,
+            placement.drawW,
+            placement.drawH
+        );
     } else {
-        ctx.drawImage(img, drawX, drawY, tw, th);
+        ctx.drawImage(
+            img,
+            placement.drawX,
+            placement.drawY,
+            placement.drawW,
+            placement.drawH
+        );
     }
 }
 

@@ -93,7 +93,7 @@ import {
     resolveStudioMapIdToLoad,
     writeStudioLastMapId,
 } from './studio/studioMapSession';
-import { drawRegistryTile } from './engine/tileDraw';
+import { drawRegistryTile, isMapBorderTile } from './engine/tileDraw';
 import {
     attachVariantBrushes,
     findVariantBrushForTileId,
@@ -2045,8 +2045,13 @@ async function saveCurrentMapToPublicDev(filename?: string) {
             activeMapSize,
             ENGINE_CONFIG.EMPTY_TILE_ID
         ).length;
+        const itemsCount = collectSparseTiles(
+            itemsOverlayMap,
+            activeMapSize,
+            ENGINE_CONFIG.EMPTY_TILE_ID
+        ).length;
         console.log(
-            `[MapSaveDebug] mapId=${entry.id} floor=${editingFloor} base=${baseCount} grass=${grassCount} border=${borderCount}`
+            `[MapSaveDebug] mapId=${entry.id} floor=${editingFloor} base=${baseCount} grass=${grassCount} border=${borderCount} items=${itemsCount}`
         );
     }
 
@@ -2504,9 +2509,15 @@ function draw() {
         }
         ctx.globalAlpha = (isAbove && playerUnder) ? 0.3 : 1.0;
 
-        const drawTileLayer = (tid: number, tx: number, ty: number) => {
+        const drawTileLayer = (
+            tid: number,
+            tx: number,
+            ty: number,
+            options?: { skipBorderTiles?: boolean }
+        ) => {
             if (tid === -1 || isVariantBrush(tid)) return;
             const tile = TILE_TYPES[tid];
+            if (options?.skipBorderTiles && isMapBorderTile(tile)) return;
             if (tile?.image?.complete) {
                 drawRegistryTile(
                     ctx,
@@ -2521,7 +2532,7 @@ function draw() {
         // Pass 1: Renderizar toda a camada de chão (chão base, grama e bordas)
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                drawTileLayer(worldMap[z][y][x], x, y);
+                drawTileLayer(worldMap[z][y][x], x, y, { skipBorderTiles: true });
                 const grassTid = getLayerCell(grassOverlayMap, z, x, y);
                 drawTileLayer(grassTid, x, y);
                 if (grassTid === ENGINE_CONFIG.EMPTY_TILE_ID) {

@@ -51,7 +51,7 @@ export async function getProfile(): Promise<UserProfile | null> {
 
 export async function signUp(email: string, password: string): Promise<void> {
     if (isMockAuthEnabled()) {
-        mockSignUp(email, password);
+        await mockSignUp(email, password);
         return;
     }
     const { error } = await getSupabase().auth.signUp({ email, password });
@@ -60,7 +60,7 @@ export async function signUp(email: string, password: string): Promise<void> {
 
 export async function signIn(email: string, password: string): Promise<void> {
     if (isMockAuthEnabled()) {
-        mockSignIn(email, password);
+        await mockSignIn(email, password);
         return;
     }
     const { error } = await getSupabase().auth.signInWithPassword({ email, password });

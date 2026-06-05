@@ -32,7 +32,12 @@ export interface AutoBorderContext {
 function isGrassTile(tile: RegistryTile | undefined, fillTerrain: string): boolean {
     if (!tile) return false;
     const group = tile.variantGroup?.toLowerCase();
-    return group === fillTerrain || group === 'grass' || group === 'grama';
+    if (!group) return false;
+    const terrain = fillTerrain.toLowerCase();
+    if (group === terrain) return true;
+    if (group === 'grass' || group === 'grama') return true;
+    if (terrain && (group.includes(terrain) || terrain.includes(group))) return true;
+    return group.includes('grass') || group.includes('grama');
 }
 
 export function cellHasGrass(
