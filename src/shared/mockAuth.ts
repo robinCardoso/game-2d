@@ -203,11 +203,17 @@ export async function mockCreateCharacter(
 }
 
 export function mockSoftDeleteCharacter(id: string, accountId: string): void {
+    console.log('[mockSoftDeleteCharacter] Request:', { id, accountId });
     const chars = readChars();
+    console.log('[mockSoftDeleteCharacter] All characters:', chars);
     const c = chars.find((x) => x.id === id && x.accountId === accountId);
+    console.log('[mockSoftDeleteCharacter] Found match:', c);
     if (c) {
         c.deletedAt = new Date().toISOString();
         writeChars(chars);
+        console.log('[mockSoftDeleteCharacter] Successfully marked deleted and saved.');
+    } else {
+        console.warn('[mockSoftDeleteCharacter] No character matched search criteria.');
     }
 }
 

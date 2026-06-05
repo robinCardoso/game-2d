@@ -83,15 +83,19 @@ enterBtn.addEventListener('click', async () => {
 });
 
 deleteBtn.addEventListener('click', async () => {
+    console.log('[roster.ts] Excluir clicked. selectedId:', selectedId, 'session.userId:', session?.userId);
     if (!selectedId) return;
     if (!confirm('Excluir este personagem? Esta ação não pode ser desfeita.')) return;
     try {
         await softDeleteCharacter(selectedId, session.userId);
+        console.log('[roster.ts] softDeleteCharacter completed. Reloading roster...');
         selectedId = null;
         enterBtn.disabled = true;
         deleteBtn.disabled = true;
         await loadRoster();
+        console.log('[roster.ts] Roster reloaded.');
     } catch (err) {
+        console.error('[roster.ts] Error deleting character:', err);
         errEl.textContent = err instanceof Error ? err.message : 'Erro ao excluir.';
         errEl.hidden = false;
     }
