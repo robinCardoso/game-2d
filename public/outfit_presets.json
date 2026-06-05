@@ -1,13 +1,5 @@
 [
   {
-    "id": "knight_male",
-    "name": "Cavaleiro",
-    "vocationId": "knight",
-    "gender": "male",
-    "spriteSheetUrl": "tiles/characters/vocations/male/knight.png",
-    "showInCreation": true
-  },
-  {
     "id": "knight_female",
     "name": "Cavaleira",
     "vocationId": "knight",
