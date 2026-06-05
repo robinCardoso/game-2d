@@ -43,6 +43,14 @@
 - **Resolução de mapa:** `tileRefResolver.ts` — `ref` estável no JSON, id numérico em runtime
 - **Random 🎲:** só ao pintar (`resolvePaintTileId`); ver [studio-improvements-log.md](./studio-improvements-log.md)
 
+## Pipeline de render (mapa)
+
+1. **Passo 1 — chão:** base (`worldMap`) + grama + auto-borda; viewport culling; nunca entra no Y-sort.
+2. **Passo 2 — Y-sort:** itens (`itemsOverlayMap`), NPCs, jogadores remotos e local na mesma fila; ordenação pelo pé do sprite (`src/engine/depthSortDraw.ts`).
+3. **UI/editor:** zonas, portais, spawns e previews desenhados por cima do Y-sort.
+
+Studio (`main.ts`) e Play (`playApp.ts`) compartilham o mesmo modelo.
+
 ## Formato de mapa (`MapDocument` v1)
 
 Documentação completa: **[docs/map-format.md](./map-format.md)** (formato esparso, catálogo de tiles, guia para IA).

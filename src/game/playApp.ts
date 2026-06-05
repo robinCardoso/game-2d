@@ -14,6 +14,14 @@ import {
     type CollisionQueryContext,
     type WorldMap,
 } from '../engine';
+import {
+    collectItemDepthDrawables,
+    collectLocalPlayerDepthDrawable,
+    collectNpcDepthDrawables,
+    collectRemoteDepthDrawables,
+    drawDepthSorted,
+    sortDepthDrawables,
+} from '../engine/depthSortDraw';
 import { drawRegistryTile, isMapBorderTile } from '../engine/tileDraw';
 import { SpriteAnimationController } from '../character/spriteAnimation';
 import type { CharacterSpriteConfig } from '../character/spriteAnimation';
@@ -509,74 +517,65 @@ function draw(): void {
             }
         }
 
-        // Pass 2: Draw items layer and interactive spots
-        for (let y = startY; y <= endY; y++) {
-            for (let x = startX; x <= endX; x++) {
-                drawLayerTile(getLayerCell(itemsOverlayMap, z, x, y), x, y);
-                if (currentMapId && z === player.worldZ) {
-                    const portal = getPortalAt(currentMapId, { x, y, z });
-                    if (portal) {
-                        const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
-                        ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
-                        ctx.fillRect(
-                            x * TILE_SIZE_SCREEN - camera.x,
-                            y * TILE_SIZE_SCREEN - camera.y,
-                            TILE_SIZE_SCREEN,
-                            TILE_SIZE_SCREEN
-                        );
-                    }
-                }
-            }
-        }
+        // Pass 2: Y-sort — itens, NPCs, remotos e jogador local por profundidade (pé)
+        const depthDrawables = [
+            ...collectItemDepthDrawables({
+                z,
+                viewport: { startX, endX, startY, endY },
+                itemsOverlay: itemsOverlayMap,
+                registry: TILE_TYPES,
+                camera,
+                tileSize: TILE_SIZE_SCREEN,
+            }),
+            ...collectNpcDepthDrawables(npcs, z, camera, TILE_SIZE_SCREEN),
+        ];
 
         if (currentMapId && gameNet) {
-            for (const remote of gameNet.getRemotePlayers(
-                currentMapId,
-                gameNet.getNetworkInstanceId()
-            )) {
-                if (remote.z !== z) continue;
-                const rx = remote.tileX * TILE_SIZE_SCREEN - camera.x;
-                const ry = remote.tileY * TILE_SIZE_SCREEN - camera.y;
-                ctx.fillStyle = 'rgba(244, 114, 182, 0.85)';
-                ctx.fillRect(rx + 10, ry + 10, TILE_SIZE_SCREEN - 20, TILE_SIZE_SCREEN - 20);
-                ctx.fillStyle = '#fda4af';
-                ctx.font = 'bold 8px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(remote.name, rx + TILE_SIZE_SCREEN / 2, ry - 4);
-            }
+            depthDrawables.push(
+                ...collectRemoteDepthDrawables(
+                    gameNet.getRemotePlayers(currentMapId, gameNet.getNetworkInstanceId()),
+                    z,
+                    camera,
+                    TILE_SIZE_SCREEN
+                )
+            );
         }
 
-        if (player.worldZ === z) {
-            ctx.globalAlpha = 1;
-            npcs.forEach((npc) => {
-                if (npc.worldZ === z) npc.draw(ctx, camera, TILE_SIZE_SCREEN);
-            });
-            if (activeCharacterController.isLoaded && activeCharacterController.image) {
-                const rect = activeCharacterController.getSourceRect();
-                const drawX =
-                    player.worldX - camera.x + (TILE_SIZE_SCREEN - rect.sw) / 2 + rect.ax;
-                const drawY =
-                    player.worldY - camera.y + (TILE_SIZE_SCREEN - rect.sh) + rect.ay;
-                ctx.drawImage(
-                    activeCharacterController.image,
-                    rect.sx,
-                    rect.sy,
-                    rect.sw,
-                    rect.sh,
-                    drawX,
-                    drawY,
-                    rect.sw,
-                    rect.sh
-                );
+        const localDrawable = collectLocalPlayerDepthDrawable({
+            worldX: player.worldX,
+            worldY: player.worldY,
+            worldZ: player.worldZ,
+            z,
+            camera,
+            tileSize: TILE_SIZE_SCREEN,
+            getSourceRect: () => activeCharacterController.getSourceRect(),
+            image: activeCharacterController.image,
+            isLoaded: activeCharacterController.isLoaded,
+            name: activeCharacterController.config.name,
+            nameStyle: 'play',
+        });
+        if (localDrawable) depthDrawables.push(localDrawable);
+
+        sortDepthDrawables(depthDrawables);
+        ctx.globalAlpha = 1;
+        drawDepthSorted(ctx, depthDrawables);
+
+        // Portais (UI) após Y-sort
+        if (currentMapId && z === player.worldZ) {
+            for (let y = startY; y <= endY; y++) {
+                for (let x = startX; x <= endX; x++) {
+                    const portal = getPortalAt(currentMapId, { x, y, z });
+                    if (!portal) continue;
+                    const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
+                    ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
+                    ctx.fillRect(
+                        x * TILE_SIZE_SCREEN - camera.x,
+                        y * TILE_SIZE_SCREEN - camera.y,
+                        TILE_SIZE_SCREEN,
+                        TILE_SIZE_SCREEN
+                    );
+                }
             }
-            ctx.fillStyle = '#38bdf8';
-            ctx.font = 'bold 8px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText(
-                activeCharacterController.config.name,
-                player.worldX - camera.x + TILE_SIZE_SCREEN / 2,
-                player.worldY - camera.y - 4
-            );
         }
     });
 }

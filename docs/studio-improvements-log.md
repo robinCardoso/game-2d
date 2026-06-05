@@ -381,9 +381,7 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
   1. **Calibrador Visual & Batch Export:** Permite ao usuário escolher se deseja manter o tamanho original ou redimensionar para 32x32px ao salvar sprites maiores. As propriedades `frameWidth` e `frameHeight` são salvas no catálogo de metadados.
   2. **Renderização com âncora (`tileDraw.ts`):** O motor calcula o tamanho real do frame e posiciona via `getSpriteTilePlacement` (centro horizontal + base no tile). Sprites 64×64 usam `anchorX` / `anchorY` em `tile_properties.json` para alinhar o pé ao centro inferior da célula (ver §21).
   3. **Camada de Sobreposição de Itens (`items`):** Adicionada a camada `itemsOverlayMap` (serializada no JSON do mapa como `layers.items`). Tiles da paleta nas abas `NATUREZA`, `PAREDES` e `ITENS` são pintados automaticamente nesta camada, preservando o chão original intacto por baixo. A borracha (Eraser) remove primeiro a decoração na camada superior e, num segundo clique, o chão base.
-  4. **Renderização em Duas Passadas:** O loop de desenho do Studio (`main.ts`) e do jogo (`playApp.ts`) foi refatorado:
-     - **Passo 1:** Desenha todo o chão base, gramas e bordas de todas as células visíveis.
-     - **Passo 2:** Desenha todos os itens decorativos/árvores por cima. Isso elimina qualquer corte lateral decorrente de blocos de chão adjacentes.
+  4. **Renderização em passadas (evoluída em §22):** Passo 1 desenha chão/grama/bordas; Passo 2 usa Y-sorting para itens e entidades (ver §22).
   5. **Combinação de Colisões (`collision.ts`):** A lógica de colisão (`queryWalkable`) mescla as propriedades físicas do chão base e do item de sobreposição. Se uma árvore for não caminhável, o personagem colide com sua célula base, mesmo que haja grama caminhável abaixo.
 
 ---
@@ -475,4 +473,25 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 - [ ] Salvar mapa → F5 → posição mantida
 - [ ] Play: mesma posição visual
 - [ ] Tile 32×32 sem âncora — comportamento idêntico ao anterior
+
+---
+
+## 22. Y-sorting de profundidade (2026-06-04)
+
+### 22.1 Personagem vs árvores e decorações
+- **Arquivos:** `src/engine/depthSortDraw.ts`, `src/game/playApp.ts`, `src/main.ts`
+- **Problema:** Após §16, todos os itens da camada `items` eram desenhados numa passada fixa antes (ou sem comparar Y com) personagens/NPCs. Árvores 64×64 cobriam o jogador ao passar ao sul, ou o jogador ficava sempre na frente ao norte — sem profundidade estilo Tibia.
+- **Solução:**
+  1. Novo módulo `depthSortDraw.ts`: coleta drawables (itens overlay, NPCs, remotos, jogador local), calcula `sortY`/`sortX` pelo **pé** do sprite (`getSpriteTilePlacement` / âncora do tile).
+  2. **Passo 1** inalterado: chão base + grama + auto-borda (evita corte lateral de chão).
+  3. **Passo 2:** fila Y-sort unificada; desenho na ordem `sortY` asc, `sortX` asc.
+  4. Overlays de editor (zonas, portais, spawns, preview) e UI permanecem **após** o Y-sort.
+- **Regra:** Norte da árvore → personagem atrás; sul → personagem na frente; durante movimento usa `worldY` interpolado.
+
+### Checklist pós-Y-sort
+- [ ] Play: passar ao norte da `01_arvore` — copa cobre personagem
+- [ ] Play: passar ao sul — personagem na frente
+- [ ] Studio: mesmo comportamento com jogador visível
+- [ ] NPC/remoto na mesma linha — ordem por `sortX`
+- [ ] Chão/grama/borda — sem regressão
 

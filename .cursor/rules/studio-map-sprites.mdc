@@ -77,6 +77,13 @@ Referência detalhada: `docs/studio-improvements-log.md`, `docs/auto-border.md`,
 - **Save JSON:** `mapDocumentFormat.ts` deve exportar `layers.grass` e `layers.border`.
 - **Random:** só `resolvePaintTileId`; render e mapa carregado usam ids fixos.
 
+## Y-sorting (profundidade) — NÃO REGREDIR
+
+- **Passo 1:** chão base + grama + auto-borda apenas (`worldMap` / overlays grass+border) — **não** mover para Y-sort.
+- **Passo 2:** `depthSortDraw.ts` — itens (`itemsOverlayMap`) + NPCs + remotos + jogador local na **mesma fila**, ordenados por pé (`sortY`, `sortX`).
+- **Não** desenhar todos os itens numa passada fixa antes do jogador sem Y-sort.
+- Overlays de editor (zonas, portais, spawns, preview) ficam **após** o Y-sort.
+
 ## Performance render (Studio) — NÃO REGREDIR
 
 - **`draw()`:** só células visíveis (`computeViewportTileBounds`); pular andares vazios (`floorHasVisibleContentInView`).

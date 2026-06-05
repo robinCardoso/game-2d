@@ -93,6 +93,14 @@ import {
     resolveStudioMapIdToLoad,
     writeStudioLastMapId,
 } from './studio/studioMapSession';
+import {
+    collectItemDepthDrawables,
+    collectLocalPlayerDepthDrawable,
+    collectNpcDepthDrawables,
+    collectRemoteDepthDrawables,
+    drawDepthSorted,
+    sortDepthDrawables,
+} from './engine/depthSortDraw';
 import { drawRegistryTile, isMapBorderTile } from './engine/tileDraw';
 import {
     attachVariantBrushes,
@@ -2549,12 +2557,62 @@ function draw() {
             }
         }
 
-        // Pass 2: Renderizar itens de sobreposição (árvores, decorações, etc.) e marcações de edição
+        // Pass 2: Y-sort — itens, NPCs, remotos e jogador local por profundidade (pé)
+        const depthDrawables = [
+            ...collectItemDepthDrawables({
+                z,
+                viewport: { startX, endX, startY, endY },
+                itemsOverlay: itemsOverlayMap,
+                registry: TILE_TYPES,
+                camera: { x: camX, y: camY, zoom },
+                tileSize: TILE_SIZE_SCREEN,
+                shouldIncludeTile: (tid) => tid !== -1 && !isVariantBrush(tid),
+            }),
+            ...collectNpcDepthDrawables(npcs, z, { x: camX, y: camY, zoom }, TILE_SIZE_SCREEN, {
+                drawNames: true,
+                nameStyle: 'studio',
+            }),
+        ];
+
+        if (currentMapId && gameNet) {
+            depthDrawables.push(
+                ...collectRemoteDepthDrawables(
+                    gameNet.getRemotePlayers(currentMapId, gameNet.getNetworkInstanceId()),
+                    z,
+                    { x: camX, y: camY, zoom },
+                    TILE_SIZE_SCREEN,
+                    { nameStyle: 'studio' }
+                )
+            );
+        }
+
+        const hidePlayer = getStudioBoot()?.hidePlayerSprite === true;
+        if (!hidePlayer) {
+            const localDrawable = collectLocalPlayerDepthDrawable({
+                worldX: player.worldX,
+                worldY: player.worldY,
+                worldZ: player.worldZ,
+                z,
+                camera: { x: camX, y: camY, zoom },
+                tileSize: TILE_SIZE_SCREEN,
+                getSourceRect: () => activeCharacterController.getSourceRect(),
+                image: activeCharacterController.image,
+                isLoaded: activeCharacterController.isLoaded,
+                name: activeCharacterController.config.name,
+                zoom,
+                nameStyle: 'studio',
+                fallbackTile: TILE_TYPES[6],
+            });
+            if (localDrawable) depthDrawables.push(localDrawable);
+        }
+
+        sortDepthDrawables(depthDrawables);
+        ctx.globalAlpha = 1;
+        drawDepthSorted(ctx, depthDrawables);
+
+        // Overlays de editor (UI) após Y-sort
         for (let y = startY; y <= endY; y++) {
             for (let x = startX; x <= endX; x++) {
-                const itemTid = getLayerCell(itemsOverlayMap, z, x, y);
-                drawTileLayer(itemTid, x, y);
-
                 if (activeMapEditorTab === 'zones') {
                     const meta = worldMetadata[`${z}_${y}_${x}`];
                     if (meta && meta.zoneId && meta.zoneId > 0) {
@@ -2674,109 +2732,6 @@ function draw() {
             drawPaintBrushPreview(ctx, camX, camY, paintBrushPreview.tx, paintBrushPreview.ty);
         }
 
-        // Desenha todos os NPCs no andar atual
-        npcs.forEach(npc => {
-            if (npc.worldZ === z) {
-                npc.draw(ctx, { ...camera, x: camX, y: camY } as any, TILE_SIZE_SCREEN);
-                
-                // Desenha o nome do NPC baseado no topo real do sprite (cabeça)
-                const placement = npc.getDrawPlacement({ ...camera, x: camX, y: camY, zoom }, TILE_SIZE_SCREEN);
-                const nameX = placement.drawX + placement.drawW / 2 - 10;
-                const nameY = placement.drawY - 6;
-
-                ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
-                ctx.textAlign = 'center';
-                
-                // Borda preta estilo jogo retro de Tibia/RPG
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 2.5;
-                ctx.strokeText(npc.name, nameX, nameY);
-                
-                // Preenchimento verde
-                ctx.fillStyle = '#4ade80';
-                ctx.fillText(npc.name, nameX, nameY);
-            }
-        });
-
-        if (currentMapId && gameNet) {
-            for (const remote of gameNet.getRemotePlayers(
-                currentMapId,
-                gameNet.getNetworkInstanceId()
-            )) {
-                if (remote.z !== z) continue;
-                const rx = remote.tileX * TILE_SIZE_SCREEN - camX;
-                const ry = remote.tileY * TILE_SIZE_SCREEN - camY;
-                
-                // Desenha o corpo do player remoto
-                ctx.fillStyle = 'rgba(244, 114, 182, 0.85)';
-                ctx.fillRect(rx + 10, ry + 10, TILE_SIZE_SCREEN - 20, TILE_SIZE_SCREEN - 20);
-                ctx.strokeStyle = '#fda4af';
-                ctx.lineWidth = 2;
-                ctx.strokeRect(rx + 10, ry + 10, TILE_SIZE_SCREEN - 20, TILE_SIZE_SCREEN - 20);
-                
-                // Nome com borda preta estilo retro RPG
-                ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
-                ctx.textAlign = 'center';
-                
-                ctx.strokeStyle = '#000000';
-                ctx.lineWidth = 2.5;
-                ctx.strokeText(remote.name, rx + TILE_SIZE_SCREEN / 2 - 10, ry - 6);
-                
-                ctx.fillStyle = '#fda4af';
-                ctx.fillText(remote.name, rx + TILE_SIZE_SCREEN / 2 - 10, ry - 6);
-            }
-        }
-
-        if (player.worldZ === z) {
-            const hidePlayer = getStudioBoot()?.hidePlayerSprite === true;
-            if (!hidePlayer && activeCharacterController.isLoaded && activeCharacterController.image) {
-                const rect = activeCharacterController.getSourceRect();
-                const sw = rect.sw;
-                const sh = rect.sh;
-                // Alinhamento Centro-Inferior (Bottom-Center)
-                const rawX = player.worldX - camX + (TILE_SIZE_SCREEN - sw) / 2 + rect.ax;
-                const rawY = player.worldY - camY + (TILE_SIZE_SCREEN - sh) + rect.ay;
-                const drawX = Math.round(rawX * zoom) / zoom;
-                const drawY = Math.round(rawY * zoom) / zoom;
-                
-                ctx.drawImage(
-                    activeCharacterController.image,
-                    rect.sx, rect.sy, sw, sh - 0.5,
-                    drawX, drawY,
-                    sw, sh
-                );
-            } else if (!hidePlayer) {
-                const knight = TILE_TYPES[6];
-                if (knight && knight.image && knight.image.complete) {
-                    ctx.drawImage(knight.image, player.worldX - camX, player.worldY - camY, TILE_SIZE_SCREEN, TILE_SIZE_SCREEN);
-                }
-            }
-
-            if (!hidePlayer) {
-            // Desenha o nome do jogador acima dele (com borda preta retro estilo RPG/Tibia)
-            const pRect = activeCharacterController.getSourceRect();
-            const pSw = pRect.sw;
-            const pSh = pRect.sh;
-            const pRawX = player.worldX - camX + (TILE_SIZE_SCREEN - pSw) / 2 + pRect.ax;
-            const pRawY = player.worldY - camY + (TILE_SIZE_SCREEN - pSh) + pRect.ay;
-            const pDrawX = Math.round(pRawX * zoom) / zoom;
-            const pDrawY = Math.round(pRawY * zoom) / zoom;
-            const pNameX = pDrawX + pSw / 2 - 10;
-            const pNameY = pDrawY - 6;
-
-            ctx.font = "bold 11px 'Outfit', 'Courier New', monospace";
-            ctx.textAlign = 'center';
-            
-            // Borda preta
-            ctx.strokeStyle = '#000000';
-            ctx.lineWidth = 2.5;
-            ctx.strokeText(activeCharacterController.config.name, pNameX, pNameY);
-            
-            // Preenchimento azul claro
-            ctx.fillStyle = '#38bdf8';
-            ctx.fillText(activeCharacterController.config.name, pNameX, pNameY);
-            }
-        }
     });
 
     lastDrawViewportStats = {
