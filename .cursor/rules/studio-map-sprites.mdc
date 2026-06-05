@@ -85,6 +85,12 @@ Referência detalhada: `docs/studio-improvements-log.md`, `docs/auto-border.md`,
 - **Idle FPS:** Studio 30 FPS após 2 s sem input; **60 FPS** ao interagir e nas abas Portais/Spawns; **Play (`playApp.ts`) sempre 60 FPS**.
 - **Debug dev:** `localStorage` keys `debug.perf`, `debug.paint`, `debug.map.save`, `debug.movement` — ver `docs/studio-improvements-log.md` §7.8.
 
+## Personagens e Outfits — NÃO REGREDIR
+
+1. **Criação e Roster:** A visualização na criação de personagem (`create.ts`) e no roster (`roster.ts`) usa `<canvas>` com Chroma Key e fatiamento 32x32 virado para o Sul (`walk_down` / `idle_down`) carregado dos JSONs de configuração dos outfits, e nunca `<img>` estáticos ou texturas completas com fundo magenta.
+2. **Sincronização de Calibração (Hot-reload):** O motor de jogo (`playApp.ts` -> `startPlay`) e a criação (`characterStore.ts` -> `createCharacter`) devem sempre fazer fetch das configurações do arquivo JSON oficial do outfit no servidor para sincronizar dimensões e Chroma Key em tempo real, permitindo que alterações nos JSONs se reflitam imediatamente para os personagens ativos.
+3. **Calibrador de Âncoras do Studio:** A visualização do calibrador em `spriteSheetEditor.ts` deve sempre renderizar a célula azul tracejada de 32x32px e a mira vermelha no centro inferior do tile (ponto de âncora padrão dos pés do boneco), aplicando os deslocamentos `anchorX` e `anchorY` multiplicados pela escala no preview para feedback em tempo real.
+
 ## Checklist antes de alterar este subsistema
 
 - [ ] Registry ainda registra em ordem determinística de path?

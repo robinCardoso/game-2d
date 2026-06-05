@@ -405,5 +405,31 @@ Sessão dedicada à resolução de problemas de usabilidade que causavam perda d
 - **Problema:** A configuração de mapas e as posições de portais estáticos do mundo do jogo estavam acopladas no motor do jogo e nos JSONs dos mapas do client.
 - **Solução:**
   1. **Commit 1:** Criado `maps.ts` definindo `MAPS: GameMapConfig[]` centralizadamente na camada de Game Data e substituído o `MAP_REGISTRY` no runtime do client por `DEFAULT_GAME_DATA.maps`.
-  2. **Commit 2:** Criado `portals.ts` definindo `PORTALS: GamePortalConfig[]` no Game Data. Removida a variável `worldPortals` em `playApp.ts` e implementado o helper `getPortalAt(mapId, position)` para buscar portais dinamicamente da fonte de dados estática `DEFAULT_GAME_DATA.portals`.
+  2. **Commit 2:** Criado `portals.ts` definindo `PORTALS: GamePortalConfig[]` no Game Data. Removida a variável `worldPortals` in `playApp.ts` e implementado o helper `getPortalAt(mapId, position)` para buscar portais dinamicamente da fonte de dados estática `DEFAULT_GAME_DATA.portals`.
+
+---
+
+## 19. Sistema de Customização de Personagens e Calibração de Âncora (2026-06-04)
+
+### 19.1 Animated Preview e Outfit Presets
+- **Arquivos:** [create.ts](file:///c:/Users/Robson/source/game-2d/src/characters/create.ts), [characters-new.html](file:///c:/Users/Robson/source/game-2d/characters-new.html), [loadOutfitPresets.ts](file:///c:/Users/Robson/source/game-2d/src/game-data/default/loadOutfitPresets.ts)
+- **Problema:** A criação de personagem usava um dropdown de presets simplista que renderizava o spritesheet PNG inteiro de forma estática com fundo magenta.
+- **Solução:** Substituída a visualização estática por um `<canvas id="presetPreviewCanvas">` de 128x128. O script carrega a configuração JSON do outfit selecionado, lê a animação `walk_down` (ou `idle_down` como fallback), aplica Chroma Key em tempo real para remover o magenta, e renderiza o personagem caminhando para o sul em loop. A tag `<img>` antiga e quebrada foi removida do HTML.
+
+### 19.2 Sincronização e Carga Dinâmica de Sprite Config
+- **Arquivos:** [characterStore.ts](file:///c:/Users/Robson/source/game-2d/src/shared/characterStore.ts), [mockAuth.ts](file:///c:/Users/Robson/source/game-2d/src/shared/mockAuth.ts), [playApp.ts](file:///c:/Users/Robson/source/game-2d/src/game/playApp.ts)
+- **Problema:** Ao criar um personagem, o sistema gravava as configurações do outfit com dimensões padrões genéricas de 64x64 sem Chroma Key. Isso fazia o jogo em `/play.html` renderizar o spritesheet inteiro em cima do mapa com fundo rosa. Além disso, se o desenvolvedor atualizasse a calibração de um visual no arquivo JSON do servidor, as modificações não se refletiam nos personagens já criados.
+- **Solução:**
+  1. Durante a criação, `createCharacter` e `mockCreateCharacter` fazem fetch do arquivo JSON oficial do outfit e persistem suas propriedades corretas de fatiamento no banco/localStorage.
+  2. No loop de inicialização do jogo (`startPlay` em `playApp.ts`), a engine faz fetch e mescla a configuração oficial do arquivo JSON em tempo real sobre as configurações salvas do personagem, garantindo que atualizações de spritesheet e âncoras se refletiam instantaneamente para todos os jogadores.
+
+### 19.3 Preview de Roster em Canvas
+- **Arquivo:** [roster.ts](file:///c:/Users/Robson/source/game-2d/src/characters/roster.ts)
+- **Problema:** A listagem de personagens no menu principal (`characters.html`) exibia o spritesheet de textura inteiro com o fundo magenta nas cartas de escolha do personagem.
+- **Solução:** Substituída a renderização por um `<canvas>` de 64x64 por card. A função `drawCharacterPreview` carrega as configurações da spritesheet, faz o fatiamento correto do frame virado para o sul (idle/walk down), remove o fundo magenta via Chroma Key e renderiza a pixel-art perfeita e limpa do aventureiro.
+
+### 19.4 Calibrador de Âncoras com Guia Visual (Studio)
+- **Arquivo:** [spriteSheetEditor.ts](file:///c:/Users/Robson/source/game-2d/src/editor/spriteSheetEditor.ts)
+- **Problema:** O editor de fichas de personagens permitia preencher os campos `Ajuste Âncora X` e `Y` mas não dava nenhum feedback visual das alterações. O boneco ficava oculto no mapa do editor (por causa de `hidePlayerSprite: true` no boot) e o canvas de preview lateral apenas esticava o frame cobrindo a área toda, sem aplicar as âncoras.
+- **Solução:** O loop `drawPreviewLoop` do preview lateral de animação do editor foi aprimorado. Agora ele desenha uma célula guia azul tracejada de 32x32px (escalada) representando o bloco de colisão, uma mira (cruz) vermelha representando o ponto de âncora padrão dos pés do personagem, e desenha o sprite aplicando os valores de `anchorX` e `anchorY` em tempo real. Isso permite ao usuário ver o sprite deslizar e calibrar visualmente até os pés tocarem a mira de forma exata.
 
