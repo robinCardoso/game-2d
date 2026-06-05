@@ -46,5 +46,13 @@
     "gender": "female",
     "spriteSheetUrl": "tiles/characters/vocations/female/archer.png",
     "showInCreation": true
+  },
+  {
+    "id": "knight",
+    "name": "Knight",
+    "vocationId": "knight",
+    "gender": "male",
+    "spriteSheetUrl": "tiles/characters/vocations/male/knight.png",
+    "showInCreation": true
   }
 ]
