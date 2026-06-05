@@ -609,9 +609,10 @@ export default defineConfig({
     {
       name: 'local-saving-backend',
       configureServer(server) {
-        // Serve a pasta tiles/ como arquivos estáticos em /tiles/
+         // Serve a pasta tiles/ como arquivos estáticos em /tiles/
         server.middlewares.use('/tiles', (req, res, next) => {
-          if (req.url && (req.url.includes('?import') || req.url.includes('?url'))) {
+          // Ignora requisições de módulo do Vite (ex: ?import, ?t=123&import&url)
+          if (req.url && /[?&](import|url)\b/.test(req.url)) {
             return next();
           }
           const tilesRoot = path.resolve(__dirname, 'tiles');
