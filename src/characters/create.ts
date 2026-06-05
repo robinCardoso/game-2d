@@ -11,9 +11,190 @@ const stepLabel = document.getElementById('wizardStep') as HTMLElement;
 const presetSelect = document.getElementById('preset') as HTMLSelectElement;
 const genderSelect = document.getElementById('gender') as HTMLSelectElement;
 const outfitSelect = document.getElementById('outfit') as HTMLSelectElement;
-const presetPreview = document.getElementById('presetPreview') as HTMLImageElement;
+const previewCanvas = document.getElementById('presetPreviewCanvas') as HTMLCanvasElement;
+const previewCtx = previewCanvas?.getContext('2d');
 
 let outfitPresets: OutfitPreset[] = [];
+
+// ---- Preview animado ----
+interface AnimationEntry {
+    row: number;
+    startFrame?: number;
+    frames: number;
+    speedFps: number;
+    loop: boolean;
+}
+
+interface CharacterConfig {
+    frameWidth: number;
+    frameHeight: number;
+    offsetX?: number;
+    offsetY?: number;
+    gapX?: number;
+    gapY?: number;
+    sheetLayout?: 'horizontal' | 'vertical';
+    chromaKey?: boolean;
+    chromaKeyTolerance?: number;
+    animations: Record<string, AnimationEntry>;
+}
+
+let previewAnimId = 0; // controle de cancelamento
+let currentPreviewImage: HTMLImageElement | null = null;
+
+/**
+ * Remove o magenta (chroma key) de um ImageData, tornando-o transparente.
+ */
+function applyChromaKey(imageData: ImageData, tolerance: number): void {
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        // Magenta puro: R=255, G=0, B=255
+        if (r >= 255 - tolerance && g <= tolerance && b >= 255 - tolerance) {
+            d[i + 3] = 0; // transparente
+        }
+    }
+}
+
+/**
+ * Carrega o JSON de configuração do personagem a partir do spriteSheetUrl.
+ * Converte tiles/characters/vocations/male/knight.png → tiles/characters/vocations/male/knight.json
+ */
+async function loadCharacterConfig(spriteSheetUrl: string): Promise<CharacterConfig | null> {
+    const jsonUrl = '/' + spriteSheetUrl.replace(/\.png$/i, '.json');
+    try {
+        const response = await fetch(jsonUrl);
+        if (!response.ok) return null;
+        return await response.json() as CharacterConfig;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Inicia a animação de preview no canvas para o outfit selecionado.
+ */
+async function startAnimatedPreview(outfit: OutfitPreset): Promise<void> {
+    // Incrementa o ID para cancelar animações anteriores
+    const thisAnimId = ++previewAnimId;
+
+    if (!previewCtx || !previewCanvas) return;
+
+    // Limpa canvas enquanto carrega
+    previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+    // Carrega a config JSON do personagem
+    const config = await loadCharacterConfig(outfit.spriteSheetUrl);
+    if (thisAnimId !== previewAnimId) return; // cancelado
+
+    // Carrega a imagem do spritesheet
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+
+    const imageLoaded = new Promise<boolean>((resolve) => {
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+    });
+
+    img.src = `/${outfit.spriteSheetUrl}`;
+    const loaded = await imageLoaded;
+    if (!loaded || thisAnimId !== previewAnimId) return;
+
+    currentPreviewImage = img;
+
+    // Usa config real ou fallback conservador
+    const frameWidth = config?.frameWidth ?? 32;
+    const frameHeight = config?.frameHeight ?? 32;
+    const offsetX = config?.offsetX ?? 0;
+    const offsetY = config?.offsetY ?? 0;
+    const gapX = config?.gapX ?? 0;
+    const gapY = config?.gapY ?? 0;
+    const useChromaKey = config?.chromaKey ?? false;
+    const chromaKeyTolerance = config?.chromaKeyTolerance ?? 50;
+    const sheetLayout = config?.sheetLayout ?? 'horizontal';
+
+    // Pega animação walk_down (preferencial) ou idle_down como fallback
+    const anim: AnimationEntry = config?.animations?.['walk_down']
+        ?? config?.animations?.['idle_down']
+        ?? { row: 0, startFrame: 0, frames: 1, speedFps: 5, loop: true };
+
+    const totalFrames = Math.max(1, anim.frames);
+    const startFrame = anim.startFrame ?? 0;
+    const fps = Math.max(1, anim.speedFps);
+    const msPerFrame = 1000 / fps;
+
+    // Escala para caber no canvas (128x128)
+    const scale = Math.floor(Math.min(previewCanvas.width / frameWidth, previewCanvas.height / frameHeight));
+    const drawW = frameWidth * scale;
+    const drawH = frameHeight * scale;
+    const drawX = Math.floor((previewCanvas.width - drawW) / 2);
+    const drawY = Math.floor((previewCanvas.height - drawH) / 2);
+
+    let currentFrame = 0;
+    let lastFrameTime = 0;
+
+    // Canvas temporário para chroma key
+    let tempCanvas: HTMLCanvasElement | null = null;
+    let tempCtx: CanvasRenderingContext2D | null = null;
+    if (useChromaKey) {
+        tempCanvas = document.createElement('canvas');
+        tempCanvas.width = frameWidth;
+        tempCanvas.height = frameHeight;
+        tempCtx = tempCanvas.getContext('2d');
+    }
+
+    function drawFrame(timestamp: number): void {
+        if (thisAnimId !== previewAnimId) return; // cancelado
+        if (!previewCtx) return;
+
+        if (timestamp - lastFrameTime >= msPerFrame) {
+            lastFrameTime = timestamp;
+
+            const frameIndex = startFrame + currentFrame;
+
+            // Calcula posição do frame no spritesheet
+            let sx: number, sy: number;
+            if (sheetLayout === 'vertical') {
+                sx = anim.row * (frameWidth + gapX) + offsetX;
+                sy = frameIndex * (frameHeight + gapY) + offsetY;
+            } else {
+                sx = frameIndex * (frameWidth + gapX) + offsetX;
+                sy = anim.row * (frameHeight + gapY) + offsetY;
+            }
+
+            previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+            if (useChromaKey && tempCtx && tempCanvas) {
+                // Desenha no canvas temporário, aplica chroma key, depois copia
+                tempCtx.clearRect(0, 0, frameWidth, frameHeight);
+                tempCtx.drawImage(img, sx, sy, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
+                const imageData = tempCtx.getImageData(0, 0, frameWidth, frameHeight);
+                applyChromaKey(imageData, chromaKeyTolerance);
+                tempCtx.putImageData(imageData, 0, 0);
+                previewCtx.imageSmoothingEnabled = false;
+                previewCtx.drawImage(tempCanvas, 0, 0, frameWidth, frameHeight, drawX, drawY, drawW, drawH);
+            } else {
+                previewCtx.imageSmoothingEnabled = false;
+                previewCtx.drawImage(img, sx, sy, frameWidth, frameHeight, drawX, drawY, drawW, drawH);
+            }
+
+            currentFrame = (currentFrame + 1) % totalFrames;
+        }
+
+        requestAnimationFrame(drawFrame);
+    }
+
+    requestAnimationFrame(drawFrame);
+}
+
+function stopPreview(): void {
+    previewAnimId++;
+    if (previewCtx && previewCanvas) {
+        previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+    }
+    currentPreviewImage = null;
+}
+
+// ---- Fim preview animado ----
 
 async function init() {
     try {
@@ -24,7 +205,7 @@ async function init() {
     
     presetSelect?.addEventListener('change', renderOutfitOptions);
     genderSelect?.addEventListener('change', renderOutfitOptions);
-    outfitSelect?.addEventListener('change', updatePreview);
+    outfitSelect?.addEventListener('change', () => void updatePreview());
 
     renderOutfitOptions();
 }
@@ -47,19 +228,19 @@ function renderOutfitOptions() {
         outfitSelect.appendChild(option);
     }
 
-    updatePreview();
+    void updatePreview();
 }
 
-function updatePreview(): void {
-    if (presetPreview && outfitSelect) {
-        const outfitId = outfitSelect.value;
-        const outfit = findOutfitPreset(outfitPresets, outfitId);
+async function updatePreview(): Promise<void> {
+    if (!outfitSelect) return;
 
-        if (outfit) {
-            presetPreview.src = `/${outfit.spriteSheetUrl || ''}`;
-        } else {
-            presetPreview.src = '';
-        }
+    const outfitId = outfitSelect.value;
+    const outfit = findOutfitPreset(outfitPresets, outfitId);
+
+    if (outfit) {
+        await startAnimatedPreview(outfit);
+    } else {
+        stopPreview();
     }
 }
 
