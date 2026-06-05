@@ -602,7 +602,20 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     if (playCharNameEl) playCharNameEl.textContent = character.name;
     updateCharacterStatsUi(character);
 
-    const outfit = character.outfitConfig as CharacterSpriteConfig;
+    const outfit = { ...character.outfitConfig } as CharacterSpriteConfig;
+    // Sincroniza a configuração do sprite em tempo real a partir do JSON oficial
+    const jsonUrl = '/' + outfit.spriteSheetUrl.replace(/\.png$/i, '.json');
+    try {
+        const res = await fetch(jsonUrl);
+        if (res.ok) {
+            const realConfig = await res.json();
+            Object.assign(outfit, realConfig);
+            console.log('[playApp] Configuração de outfit carregada e atualizada com sucesso:', outfit);
+        }
+    } catch (e) {
+        console.error('[playApp] Falha ao atualizar configuração do outfit:', e);
+    }
+
     activeCharacterController = new SpriteAnimationController(outfit);
 
     if (character.position) {
