@@ -85,8 +85,12 @@ enterBtn.addEventListener('click', async () => {
 deleteBtn.addEventListener('click', async () => {
     console.log('[roster.ts] Excluir clicked. selectedId:', selectedId, 'session.userId:', session?.userId);
     if (!selectedId) return;
-    if (!confirm('Excluir este personagem? Esta ação não pode ser desfeita.')) return;
+    console.log('[roster.ts] Showing confirm dialog...');
+    const confirmed = confirm('Excluir este personagem? Esta ação não pode ser desfeita.');
+    console.log('[roster.ts] Confirm dialog result:', confirmed);
+    if (!confirmed) return;
     try {
+        console.log('[roster.ts] Calling softDeleteCharacter...');
         await softDeleteCharacter(selectedId, session.userId);
         console.log('[roster.ts] softDeleteCharacter completed. Reloading roster...');
         selectedId = null;
