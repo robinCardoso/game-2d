@@ -611,6 +611,9 @@ export default defineConfig({
       configureServer(server) {
         // Serve a pasta tiles/ como arquivos estáticos em /tiles/
         server.middlewares.use('/tiles', (req, res, next) => {
+          if (req.url && (req.url.includes('?import') || req.url.includes('?url'))) {
+            return next();
+          }
           const tilesRoot = path.resolve(__dirname, 'tiles');
           const safePath = req.url ? decodeURIComponent(req.url.split('?')[0]) : '/';
           const filePath = path.join(tilesRoot, safePath);
