@@ -1947,7 +1947,10 @@ window.addEventListener('keydown', e => {
     
     if (key === 'p') mapEditorController.setTool('pencil');
     if (key === 'b') mapEditorController.setTool('bucket');
-    if (key === 'e') mapEditorController.setTool('eraser');
+    // E sozinho ou W+E = diagonal NE no movimento; borracha só sem W pressionado
+    if (key === 'e' && !keys['w'] && !keys['arrowup']) {
+        mapEditorController.setTool('eraser');
+    }
     if (key === 'i') mapEditorController.setTool('eyedropper');
     if (key === 'u') mapEditorController.setTool('rectangle');
     if (key === 'l') mapEditorController.setTool('line');

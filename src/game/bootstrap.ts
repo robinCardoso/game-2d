@@ -3,6 +3,20 @@ import { getCharacter } from '../shared/characterStore';
 import { track } from '../shared/analytics';
 import { startPlay, stopLocationAutosave } from './playApp';
 
+// Listeners cedo — evita navegação pelo href antes do save (durante carregamento do mapa).
+document.getElementById('changeCharLink')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await stopLocationAutosave();
+    location.href = '/characters.html';
+});
+
+document.getElementById('logoutPlay')?.addEventListener('click', async (e) => {
+    e.preventDefault();
+    await stopLocationAutosave();
+    await signOut();
+    location.href = '/login.html';
+});
+
 const params = new URLSearchParams(location.search);
 const characterId = params.get('characterId');
 
@@ -22,16 +36,3 @@ if (!characterId) {
         /* redirect em requireAuth */
     }
 }
-
-document.getElementById('changeCharLink')?.addEventListener('click', async (e) => {
-    e.preventDefault();
-    await stopLocationAutosave();
-    location.href = '/characters.html';
-});
-
-document.getElementById('logoutPlay')?.addEventListener('click', async (e) => {
-    e.preventDefault();
-    await stopLocationAutosave();
-    await signOut();
-    location.href = '/login.html';
-});

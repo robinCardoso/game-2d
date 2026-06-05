@@ -79,7 +79,10 @@ const player = {
     tileX: 50,
     tileY: 50,
 };
-const camera = { x: 0, y: 0 };
+const camera = { x: 0, y: 0, zoom: 1.0 };
+
+const PLAY_ZOOM_STEPS = [0.75, 1, 1.25, 1.5, 2, 2.5, 3] as const;
+const PLAY_ZOOM_STORAGE_KEY = 'game2d_camera_zoom';
 const keys: Record<string, boolean> = {};
 const gridMovement = createGridMovementController();
 const npcs: GameEntity[] = [];
@@ -258,6 +261,13 @@ async function saveCurrentCharacterLocation(): Promise<void> {
             },
             direction,
         });
+        activeCharacter.mapId = currentMapId;
+        activeCharacter.position = {
+            x: player.tileX,
+            y: player.tileY,
+            z: player.worldZ,
+        };
+        activeCharacter.direction = direction;
     } catch (err) {
         console.error('Failed to save character location:', err);
     }
@@ -454,15 +464,96 @@ function getPlayBorderDrawContext() {
     };
 }
 
+function computePlayViewportBounds(camX: number, camY: number, zoom: number) {
+    const startX = Math.max(0, Math.floor(camX / TILE_SIZE_SCREEN));
+    const endX = Math.min(
+        activeMapSize - 1,
+        Math.floor((camX + canvas.width / zoom) / TILE_SIZE_SCREEN)
+    );
+    const startY = Math.max(0, Math.floor(camY / TILE_SIZE_SCREEN));
+    const endY = Math.min(
+        activeMapSize - 1,
+        Math.floor((camY + canvas.height / zoom) / TILE_SIZE_SCREEN)
+    );
+    return { startX, endX, startY, endY };
+}
+
+function updatePlayZoomUi(): void {
+    const zoom = camera.zoom || 1;
+    const label = document.getElementById('playZoomLabel');
+    const zoomIn = document.getElementById('playZoomIn') as HTMLButtonElement | null;
+    const zoomOut = document.getElementById('playZoomOut') as HTMLButtonElement | null;
+    if (label) label.textContent = `${Math.round(zoom * 100)}%`;
+    if (zoomIn) zoomIn.disabled = zoom >= PLAY_ZOOM_STEPS[PLAY_ZOOM_STEPS.length - 1] - 0.001;
+    if (zoomOut) zoomOut.disabled = zoom <= PLAY_ZOOM_STEPS[0] + 0.001;
+}
+
+function setPlayZoom(nextZoom: number): void {
+    const clamped = PLAY_ZOOM_STEPS.reduce((best, step) =>
+        Math.abs(step - nextZoom) < Math.abs(best - nextZoom) ? step : best
+    );
+    camera.zoom = clamped;
+    updatePlayZoomUi();
+    try {
+        localStorage.setItem(PLAY_ZOOM_STORAGE_KEY, String(clamped));
+    } catch {
+        /* ignore */
+    }
+}
+
+function stepPlayZoom(delta: 1 | -1): void {
+    const current = camera.zoom || 1;
+    let idx = PLAY_ZOOM_STEPS.findIndex((z) => Math.abs(z - current) < 0.001);
+    if (idx < 0) {
+        idx = PLAY_ZOOM_STEPS.findIndex((z) => z > current);
+        if (idx < 0) idx = PLAY_ZOOM_STEPS.length - 1;
+        else if (delta < 0) idx -= 1;
+    }
+    const nextIdx = Math.max(0, Math.min(PLAY_ZOOM_STEPS.length - 1, idx + delta));
+    if (PLAY_ZOOM_STEPS[nextIdx] !== current) {
+        setPlayZoom(PLAY_ZOOM_STEPS[nextIdx]);
+    }
+}
+
+function setupPlayZoomControls(): void {
+    try {
+        const saved = localStorage.getItem(PLAY_ZOOM_STORAGE_KEY);
+        if (saved) {
+            const parsed = parseFloat(saved);
+            if (!Number.isNaN(parsed) && parsed > 0) {
+                setPlayZoom(parsed);
+            }
+        }
+    } catch {
+        /* ignore */
+    }
+    updatePlayZoomUi();
+
+    document.getElementById('playZoomIn')?.addEventListener('click', () => stepPlayZoom(1));
+    document.getElementById('playZoomOut')?.addEventListener('click', () => stepPlayZoom(-1));
+}
+
 function draw(): void {
+    const zoom = camera.zoom || 1;
+
     ctx.fillStyle = '#0a0b0e';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.scale(zoom, zoom);
+    ctx.imageSmoothingEnabled = false;
+
+    const camX = Math.round(camera.x * zoom) / zoom;
+    const camY = Math.round(camera.y * zoom) / zoom;
+    const camState = { x: camX, y: camY, zoom };
 
     const borderDrawCtx = getPlayBorderDrawContext();
     const borderMaskIndex = buildBorderMaskTileIndex(
         borderDrawCtx.registry,
         borderDrawCtx.borderSetId
     );
+
+    const { startX, endX, startY, endY } = computePlayViewportBounds(camX, camY, zoom);
 
     getAllFloorZs().forEach((z) => {
         const isAbove = z > player.worldZ;
@@ -471,11 +562,6 @@ function draw(): void {
             playerUnder = true;
         }
         ctx.globalAlpha = isAbove && playerUnder ? 0.3 : 1;
-
-        const startX = Math.max(0, Math.floor(camera.x / TILE_SIZE_SCREEN));
-        const endX = Math.min(activeMapSize - 1, Math.floor((camera.x + canvas.width) / TILE_SIZE_SCREEN));
-        const startY = Math.max(0, Math.floor(camera.y / TILE_SIZE_SCREEN));
-        const endY = Math.min(activeMapSize - 1, Math.floor((camera.y + canvas.height) / TILE_SIZE_SCREEN));
 
         const drawLayerTile = (
             tid: number | undefined,
@@ -490,8 +576,8 @@ function draw(): void {
                 drawRegistryTile(
                     ctx,
                     tile,
-                    tx * TILE_SIZE_SCREEN - camera.x,
-                    ty * TILE_SIZE_SCREEN - camera.y,
+                    tx * TILE_SIZE_SCREEN - camX,
+                    ty * TILE_SIZE_SCREEN - camY,
                     TILE_SIZE_SCREEN
                 );
             }
@@ -524,10 +610,10 @@ function draw(): void {
                 viewport: { startX, endX, startY, endY },
                 itemsOverlay: itemsOverlayMap,
                 registry: TILE_TYPES,
-                camera,
+                camera: camState,
                 tileSize: TILE_SIZE_SCREEN,
             }),
-            ...collectNpcDepthDrawables(npcs, z, camera, TILE_SIZE_SCREEN),
+            ...collectNpcDepthDrawables(npcs, z, camState, TILE_SIZE_SCREEN),
         ];
 
         if (currentMapId && gameNet) {
@@ -535,7 +621,7 @@ function draw(): void {
                 ...collectRemoteDepthDrawables(
                     gameNet.getRemotePlayers(currentMapId, gameNet.getNetworkInstanceId()),
                     z,
-                    camera,
+                    camState,
                     TILE_SIZE_SCREEN
                 )
             );
@@ -546,12 +632,13 @@ function draw(): void {
             worldY: player.worldY,
             worldZ: player.worldZ,
             z,
-            camera,
+            camera: camState,
             tileSize: TILE_SIZE_SCREEN,
             getSourceRect: () => activeCharacterController.getSourceRect(),
             image: activeCharacterController.image,
             isLoaded: activeCharacterController.isLoaded,
             name: activeCharacterController.config.name,
+            zoom,
             nameStyle: 'play',
         });
         if (localDrawable) depthDrawables.push(localDrawable);
@@ -569,8 +656,8 @@ function draw(): void {
                     const pulse = (Math.sin(Date.now() / 400) + 1) / 2;
                     ctx.fillStyle = `rgba(99, 102, 241, ${0.35 + pulse * 0.25})`;
                     ctx.fillRect(
-                        x * TILE_SIZE_SCREEN - camera.x,
-                        y * TILE_SIZE_SCREEN - camera.y,
+                        x * TILE_SIZE_SCREEN - camX,
+                        y * TILE_SIZE_SCREEN - camY,
                         TILE_SIZE_SCREEN,
                         TILE_SIZE_SCREEN
                     );
@@ -578,6 +665,8 @@ function draw(): void {
             }
         }
     });
+
+    ctx.restore();
 }
 
 function loop(): void {
@@ -648,19 +737,19 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
 
     activeCharacterController = new SpriteAnimationController(outfit);
 
-    if (character.position) {
-        player.tileX = character.position.x;
-        player.tileY = character.position.y;
-        player.worldZ = character.position.z;
-        player.worldX = player.tileX * TILE_SIZE_SCREEN;
-        player.worldY = player.tileY * TILE_SIZE_SCREEN;
-    }
-
     const entry =
         getMapById(character.mapId) ??
         getMapById(character.spawnMapId) ??
         DEFAULT_GAME_DATA.maps[0];
     if (!entry) throw new Error('Mapa inicial não encontrado.');
+
+    const savedSpawn = character.position
+        ? {
+              x: character.position.x,
+              y: character.position.y,
+              z: character.position.z,
+          }
+        : undefined;
 
     const mapEntry = {
         id: entry.id,
@@ -675,7 +764,11 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     await loadPlayBorderConfig();
     TILE_TYPES = await buildTileRegistryAsync();
     const loaded = await loadMapFile(mapEntry, TILE_TYPES);
-    applyLoadedMap({ ...loaded, mapId: loaded.mapId ?? entry.id });
+    applyLoadedMap({
+        ...loaded,
+        mapId: entry.id,
+        spawn: savedSpawn ?? loaded.spawn,
+    });
     invalidateBorderDrawCache();
 
     window.addEventListener('keydown', (e) => {
@@ -689,6 +782,7 @@ export async function startPlay(character: CharacterRow, accountId: string): Pro
     hideLoading();
 
     setupLocationAutosave();
+    setupPlayZoomControls();
 
     setupNetwork(character, accountId);
     loop();

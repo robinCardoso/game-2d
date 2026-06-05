@@ -1,4 +1,4 @@
-import { tickGridMovement } from './gridMovement';
+import { buildMovementKeyState, resolveSpriteDirection, tickGridMovement } from './gridMovement';
 
 export interface PlayerMovementController {
     updateMovement(options: {
@@ -64,21 +64,17 @@ export const PlayerMovement: PlayerMovementController = {
             refreshPlayerMovementSpeed(nowMs);
         }
 
-        // 1. Determinação de direção de entrada de teclado
-        let inputDir: 'north' | 'south' | 'east' | 'west' | null = null;
-        if (keys['w'] || keys['arrowup']) inputDir = 'north';
-        else if (keys['s'] || keys['arrowdown']) inputDir = 'south';
-        else if (keys['a'] || keys['arrowleft']) inputDir = 'west';
-        else if (keys['d'] || keys['arrowright']) inputDir = 'east';
-
-        if (inputDir) {
+        // 1. WASD + setas + Q/E (Q=NO, E=NE, S+A=SO, S+D=SE, W+A, W+D, W+Q, W+E)
+        const keyState = buildMovementKeyState(keys);
+        const spriteDir = resolveSpriteDirection(keys);
+        if (spriteDir) {
             const animDirMap = {
                 north: 'up',
                 south: 'down',
                 west: 'left',
-                east: 'right'
+                east: 'right',
             } as const;
-            activeCharacterController.setDirection(animDirMap[inputDir]);
+            activeCharacterController.setDirection(animDirMap[spriteDir]);
         }
 
         // 2. Transições de estados de animação baseadas no movimento do grid
@@ -105,12 +101,7 @@ export const PlayerMovement: PlayerMovementController = {
             player,
             controller: gridMovement,
             nowMs,
-            keys: {
-                north: !!(keys['w'] || keys['arrowup']),
-                south: !!(keys['s'] || keys['arrowdown']),
-                west: !!(keys['a'] || keys['arrowleft']),
-                east: !!(keys['d'] || keys['arrowright']),
-            },
+            keys: keyState,
             deps: {
                 tileSize: TILE_SIZE_SCREEN,
                 mapSize: MAP_SIZE,

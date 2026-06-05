@@ -24,6 +24,49 @@
       .panel-title { font-size: 11px; font-weight: bold; color: #6366f1; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
       .info-row { display: flex; justify-content: space-between; font-size: 13px; padding-bottom: 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); margin-bottom: 8px; color: #e2e8f0; }
       .info-label { color: #94a3b8; }
+      .play-zoom-controls {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        background: rgba(18, 20, 26, 0.92);
+        border: 1px solid #2d3139;
+        border-radius: 8px;
+        padding: 4px 6px;
+        z-index: 10;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      }
+      .play-zoom-controls button {
+        width: 30px;
+        height: 30px;
+        border: 1px solid #3d4450;
+        border-radius: 6px;
+        background: #1e2229;
+        color: #e2e8f0;
+        font-size: 18px;
+        line-height: 1;
+        cursor: pointer;
+        padding: 0;
+      }
+      .play-zoom-controls button:hover:not(:disabled) {
+        background: #2a3140;
+        border-color: #6366f1;
+        color: #fff;
+      }
+      .play-zoom-controls button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      #playZoomLabel {
+        min-width: 42px;
+        text-align: center;
+        font-size: 11px;
+        font-weight: bold;
+        color: #94a3b8;
+        user-select: none;
+      }
     </style>
   </head>
   <body>
@@ -33,13 +76,18 @@
         <span>
           <span id="statusPos">0, 0</span> · Z <span id="statusZ">0</span>
           <span id="posX" hidden></span><span id="posY" hidden></span><span id="posZ" hidden></span>
-          <a href="/characters.html" id="changeCharLink">Trocar personagem</a>
+          <a href="#" id="changeCharLink">Trocar personagem</a>
           <a href="#" id="logoutPlay">Sair</a>
         </span>
       </header>
       <div class="play-main-layout">
         <div id="canvasContainer">
           <canvas id="gameCanvas"></canvas>
+          <div id="playZoomControls" class="play-zoom-controls" title="Zoom da câmera">
+            <button type="button" id="playZoomOut" aria-label="Afastar">−</button>
+            <span id="playZoomLabel">100%</span>
+            <button type="button" id="playZoomIn" aria-label="Aproximar">+</button>
+          </div>
         </div>
         <aside class="sidebar">
           <div class="stats-panel">
