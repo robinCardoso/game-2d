@@ -609,6 +609,37 @@ export default defineConfig({
     {
       name: 'local-saving-backend',
       configureServer(server) {
+        // Serve a pasta tiles/ como arquivos estáticos em /tiles/
+        server.middlewares.use('/tiles', (req, res, next) => {
+          const tilesRoot = path.resolve(__dirname, 'tiles');
+          const safePath = req.url ? decodeURIComponent(req.url.split('?')[0]) : '/';
+          const filePath = path.join(tilesRoot, safePath);
+          // Previne path traversal
+          if (!filePath.startsWith(tilesRoot + path.sep) && filePath !== tilesRoot) {
+            res.statusCode = 403;
+            res.end('Forbidden');
+            return;
+          }
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            const ext = path.extname(filePath).toLowerCase();
+            const mimeTypes: Record<string, string> = {
+              '.png': 'image/png',
+              '.jpg': 'image/jpeg',
+              '.jpeg': 'image/jpeg',
+              '.gif': 'image/gif',
+              '.webp': 'image/webp',
+              '.json': 'application/json',
+            };
+            res.setHeader('Content-Type', mimeTypes[ext] ?? 'application/octet-stream');
+            res.setHeader('Cache-Control', 'no-cache');
+            const fileBuffer = fs.readFileSync(filePath);
+            res.statusCode = 200;
+            res.end(fileBuffer);
+            return;
+          }
+          next();
+        });
+
         server.middlewares.use((req, res, next) => {
           let reqPath = '';
           let reqSearch = new URLSearchParams();
