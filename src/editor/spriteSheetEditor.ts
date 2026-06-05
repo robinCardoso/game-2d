@@ -575,7 +575,60 @@ export function initSpriteSheetEditor(options: InitSpriteSheetEditorOptions): Sp
         const ox = config.offsetX ?? 0, oy = config.offsetY ?? 0, gx = config.gapX ?? 0, gy = config.gapY ?? 0;
         const sx = config.sheetLayout === 'vertical' ? ox + anim.row * (config.frameWidth + gx) : ox + currentFrame * (config.frameWidth + gx);
         const sy = config.sheetLayout === 'vertical' ? oy + currentFrame * (config.frameHeight + gy) : oy + anim.row * (config.frameHeight + gy);
-        previewCtx.drawImage(ctrl.image, sx, sy, config.frameWidth, config.frameHeight, 0, 0, previewCanvas.width, previewCanvas.height);
+
+        // 1. Desenha a célula de referência 32x32 centralizada
+        const baseTileSize = 32;
+        const scale = Math.floor(Math.min(previewCanvas.width / baseTileSize, previewCanvas.height / baseTileSize) * 0.7) || 1;
+        const tileW = baseTileSize * scale;
+        const tileH = baseTileSize * scale;
+        const tileX = (previewCanvas.width - tileW) / 2;
+        const tileY = (previewCanvas.height - tileH) / 2;
+
+        // Fundo azul translúcido do tile
+        previewCtx.fillStyle = 'rgba(56, 189, 248, 0.08)';
+        previewCtx.fillRect(tileX, tileY, tileW, tileH);
+
+        // Borda azul pontilhada do tile
+        previewCtx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+        previewCtx.lineWidth = 1.5;
+        previewCtx.setLineDash([4, 4]);
+        previewCtx.strokeRect(tileX, tileY, tileW, tileH);
+        previewCtx.setLineDash([]);
+
+        // 2. Calcula posição do personagem com âncoras aplicadas
+        // Posição de repouso padrão: Centralizado no X, Alinhado ao bottom no Y
+        const charBaseX = tileX + ((baseTileSize - config.frameWidth) / 2) * scale;
+        const charBaseY = tileY + (baseTileSize - config.frameHeight) * scale;
+
+        const anchorX = config.anchorX ?? 0;
+        const anchorY = config.anchorY ?? 0;
+
+        const drawX = charBaseX + anchorX * scale;
+        const drawY = charBaseY + anchorY * scale;
+        const drawW = config.frameWidth * scale;
+        const drawH = config.frameHeight * scale;
+
+        // Desenha o sprite com pixel-art perfeita
+        previewCtx.imageSmoothingEnabled = false;
+        previewCtx.drawImage(
+            ctrl.image,
+            sx, sy, config.frameWidth, config.frameHeight,
+            drawX, drawY, drawW, drawH
+        );
+
+        // 3. Desenha a cruz vermelha indicando o ponto de âncora/piso (Bottom-Center do tile)
+        const targetX = tileX + tileW / 2;
+        const targetY = tileY + tileH;
+        previewCtx.strokeStyle = 'rgba(239, 68, 68, 0.9)'; // Vermelho vivo
+        previewCtx.lineWidth = 2;
+        previewCtx.beginPath();
+        // Linha horizontal
+        previewCtx.moveTo(targetX - 8, targetY);
+        previewCtx.lineTo(targetX + 8, targetY);
+        // Linha vertical
+        previewCtx.moveTo(targetX, targetY - 8);
+        previewCtx.lineTo(targetX, targetY + 8);
+        previewCtx.stroke();
     }
     requestAnimationFrame(drawPreviewLoop);
 
