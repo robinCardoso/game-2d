@@ -105,15 +105,20 @@ export async function createCharacter(
 }
 
 export async function softDeleteCharacter(id: string, accountId: string): Promise<void> {
+    console.log('[characterStore.ts] softDeleteCharacter called. isMock:', isMockAuthEnabled());
     if (isMockAuthEnabled()) {
+        console.log('[characterStore.ts] Calling mockSoftDeleteCharacter...');
         mockSoftDeleteCharacter(id, accountId);
+        console.log('[characterStore.ts] mockSoftDeleteCharacter finished.');
         return;
     }
+    console.log('[characterStore.ts] Attempting Supabase update for character...');
     const { error } = await getSupabase()
         .from('characters')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
         .eq('account_id', accountId);
+    console.log('[characterStore.ts] Supabase update response error:', error);
     if (error) throw error;
 }
 
