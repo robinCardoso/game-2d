@@ -64,7 +64,19 @@ export async function createCharacter(
         throw new Error(`Limite de ${MAX_CHARACTERS_PER_ACCOUNT} personagens por conta.`);
     }
 
-    const base = createDefaultCharacterConfig();
+    // Tenta carregar a configuração real do outfit a partir do arquivo JSON
+    let outfitConfig: any = null;
+    const jsonUrl = '/' + spriteSheetUrl.replace(/\.png$/i, '.json');
+    try {
+        const res = await fetch(jsonUrl);
+        if (res.ok) {
+            outfitConfig = await res.json();
+        }
+    } catch (e) {
+        console.error('Falha ao carregar outfit config durante criação:', e);
+    }
+
+    const base = outfitConfig || createDefaultCharacterConfig();
     base.name = name;
     base.spriteSheetUrl = spriteSheetUrl;
 
