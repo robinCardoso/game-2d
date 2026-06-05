@@ -109,10 +109,32 @@ function createCollisionContext(): CollisionQueryContext {
     };
 }
 
-function isWalkable(tx: number, ty: number, z: number): boolean {
-    const wx = tx * TILE_SIZE_SCREEN;
-    const wy = ty * TILE_SIZE_SCREEN;
-    return queryWalkable(createCollisionContext(), wx, wy, z).walkable;
+function isWalkable(
+    worldX: number,
+    worldY: number,
+    z: number
+): {
+    walkable: boolean;
+    speed: number;
+    isStair: boolean;
+    stairDir?: 'up' | 'down';
+} {
+    try {
+        const result = queryWalkable(createCollisionContext(), worldX, worldY, z);
+        if (!result.walkable) return result;
+
+        // Impede o jogador de passar por cima de NPCs
+        const tx = Math.floor(worldX / TILE_SIZE_SCREEN);
+        const ty = Math.floor(worldY / TILE_SIZE_SCREEN);
+        if (isEntityAtTile(tx, ty, z, 'player')) {
+            return { walkable: false, speed: 0, isStair: false };
+        }
+
+        return result;
+    } catch (err) {
+        console.error('Erro em isWalkable:', err);
+        return { walkable: false, speed: 0, isStair: false };
+    }
 }
 
 function isStairHoleAtTile(tx: number, ty: number, z: number): boolean {
